@@ -460,3 +460,16 @@ button:disabled { opacity:.55; cursor:wait; }
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+.app-shell.locked { display: none; }
+.login-gate { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 50% 0%, rgba(96,118,255,.16), transparent 38%), var(--bg); }
+.login-card { width: min(100%, 420px); padding: 34px; display: grid; gap: 13px; border: 1px solid var(--border); border-radius: 20px; background: rgba(13,19,33,.96); box-shadow: var(--shadow); }
+.login-card .brand-mark { margin-bottom: 6px; }
+.login-card .eyebrow, .login-card h1, .login-card p { margin: 0; }
+.login-card h1 { font-size: 1.55rem; }
+.login-copy { color: var(--muted); line-height: 1.5; margin-bottom: 7px !important; }
+.login-card label { color: #c8d2e8; font-size: .82rem; font-weight: 650; }
+.login-card input { width: 100%; padding: 12px 13px; border: 1px solid var(--border); border-radius: 10px; color: var(--text); background: #080d18; outline: none; }
+.login-card input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(96,118,255,.14); }
+.login-error { min-height: 1.2em; color: #ff929f; font-size: .82rem; }
+
