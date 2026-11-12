@@ -26,6 +26,11 @@ public class HealthController {
         ));
     }
 
+    @GetMapping("/api/auth/check")
+    public ResponseEntity<Void> authenticated() {
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/api/db-health")
     public ResponseEntity<Map<String, String>> databaseHealth() {
         try {
@@ -43,3 +48,4 @@ public class HealthController {
         }
     }
 }
+
