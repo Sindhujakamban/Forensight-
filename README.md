@@ -19,7 +19,7 @@ A digital-forensics workspace with a Vite frontend and Spring Boot REST API. It 
 
 ### Backend
 
-Set `MONGODB_URI` and optionally `MONGODB_DATABASE` in your shell or environment. Do not put credentials in source files.
+Set `APP_PASSWORD` to a unique local password, and set `MONGODB_URI` and optionally `MONGODB_DATABASE` in your shell or environment. The default username is `investigator`. Do not put credentials in source files.
 
 ```bash
 cd backend
