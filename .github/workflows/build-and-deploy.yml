@@ -8,7 +8,6 @@ on:
       - "backend/**"
       - "Dockerfile"
       - "README.md"
-      - ".gitignore"
       - ".github/workflows/build-and-deploy.yml"
   workflow_dispatch:
 
@@ -42,7 +41,7 @@ jobs:
         working-directory: frontend
         env:
           GITHUB_PAGES: "true"
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://forensight-api.onrender.com' }}
         run: npm run build
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -68,7 +67,7 @@ jobs:
 
   deploy-pages:
     name: Deploy frontend to GitHub Pages
-    if: ${{ github.ref == 'refs/heads/main' }}
+    if: ${{ vars.DEPLOY_TO_GITHUB_PAGES == 'true' }}
     needs: [build-frontend, build-backend]
     runs-on: ubuntu-latest
     environment:
@@ -77,3 +76,4 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+
