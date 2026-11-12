@@ -7,7 +7,7 @@ A digital-forensics workspace with a Vite frontend and Spring Boot REST API. It 
 - `frontend/` — Vite frontend
 - `backend/` — Spring Boot REST API (Java 25, MongoDB)
 - `Dockerfile` — backend container build
-- `.github/workflows/build-and-deploy.yml` — build verification and GitHub Pages deployment
+- `.github/workflows/build-and-deploy.yml` — frontend/backend verification and optional Pages deployment
 
 ## Run locally
 
@@ -48,22 +48,24 @@ Open the [Actions tab](https://github.com/Sindhujakamban/Forensight-/actions). T
 
 GitHub Pages serves only static frontend files; it does not host the Spring Boot API or MongoDB.
 
-1. In **Settings → Pages**, choose **GitHub Actions** as the source.
-2. The workflow deploys the frontend automatically after successful builds on `main`.
-3. Add an Actions variable named `VITE_API_BASE_URL` with the public backend API base URL (for example, `https://your-api-host.example.com`). Until a backend is deployed and this variable is set, the frontend can load but API-backed features will not work.
-4. Pages websites are public to anyone on the internet. Do not publish evidence, case records, API keys, or private data in the frontend.
+1. The repository is public and Pages publishes only the static frontend. The Spring Boot API and MongoDB must be hosted separately.
+2. Pages websites are public to anyone on the internet, even when the source repository is private. Do not publish evidence, case records, API keys, or private data in the frontend.
+3. After Pages is available for this repository, open **Settings → Pages** and choose **GitHub Actions** as the source.
+4. The frontend build defaults to `https://forensight-api.onrender.com`. To use another backend, add a repository Actions variable named `VITE_API_BASE_URL` with its public API base URL.
+5. Add a repository Actions variable named `DEPLOY_TO_GITHUB_PAGES` with value `true`. Rerun the workflow. Without that variable, CI builds both components but intentionally skips the public deployment.
 
 ## Deploy the backend
 
-Deploy the root `Dockerfile` to a container host that supports Java 25. Configure these variables in the host dashboard:
+The included `render.yaml` is a Render Blueprint for the backend. Create it from the public GitHub repository at Render; the service URL is `https://forensight-api.onrender.com`. Set these variables in the Render dashboard before the service can start:
 
-- `MONGODB_URI` — MongoDB connection string (secret)
+- `MONGODB_URI` — a newly rotated MongoDB Atlas connection string (secret)
+- `APP_PASSWORD` — a unique, strong password for the investigator account (secret)
+- `APP_USERNAME` — defaults to `investigator`
 - `MONGODB_DATABASE` — defaults to `forensight_db`
-- `PORT` — host-provided service port; defaults to `8080`
 - `TRUFOR_ENABLED=false` — keep disabled until TruFor model code and pretrained weights are installed
 - `TRUFOR_PYTHON` and `TRUFOR_BRIDGE` — set only when configuring TruFor
 
-Mount persistent storage at the backend working directory's `uploads/` path. Uploaded evidence is stored on disk, so ephemeral storage is not suitable for production evidence retention. Confirm access controls, authentication, backups, TLS, and your MongoDB network allowlist before using real case data.
+All `/api/**` endpoints require HTTP Basic authentication; only `/api/health` is public for host health checks. GitHub Pages will show a sign-in screen and send credentials only in memory. The included free Render service has an ephemeral filesystem. Evidence uploads can be lost when it restarts or sleeps, so do not use it to retain real forensic evidence. Configure durable, access-controlled object storage or a paid persistent disk before real investigations.
 
 ## TruFor limitation
 
@@ -72,3 +74,4 @@ The ZIP contains the Python bridge script but not the TruFor model repository or
 ## Security and included files
 
 Local `.env` files, MongoDB credentials, evidence uploads, generated analysis data, dependency folders, and build outputs are excluded from Git. Supply all credentials through environment variables/secrets. Rotate the MongoDB credential that was present in the original ZIP before deploying.
+
