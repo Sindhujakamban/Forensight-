@@ -7,7 +7,7 @@ A digital-forensics workspace with a Vite frontend and Spring Boot REST API. It 
 - `frontend/` — Vite frontend
 - `backend/` — Spring Boot REST API (Java 25, MongoDB)
 - `Dockerfile` — backend container build
-- `.github/workflows/build-and-deploy.yml` — frontend/backend verification and optional Pages deployment
+- `.github/workflows/build-and-deploy.yml` — build verification and GitHub Pages deployment
 
 ## Run locally
 
@@ -48,11 +48,10 @@ Open the [Actions tab](https://github.com/Sindhujakamban/Forensight-/actions). T
 
 GitHub Pages serves only static frontend files; it does not host the Spring Boot API or MongoDB.
 
-1. The repository is currently private. GitHub Pages on a personal GitHub Free account requires a public repository; private-repository Pages requires an eligible paid plan.
-2. Pages websites are public to anyone on the internet, even when the source repository is private. Do not publish evidence, case records, API keys, or private data in the frontend.
-3. After Pages is available for this repository, open **Settings → Pages** and choose **GitHub Actions** as the source.
-4. Add a repository Actions variable named `VITE_API_BASE_URL` with the public backend API base URL (for example, `https://your-api-host.example.com`).
-5. Add a repository Actions variable named `DEPLOY_TO_GITHUB_PAGES` with value `true`. Rerun the workflow. Without that variable, CI builds both components but intentionally skips the public deployment.
+1. In **Settings → Pages**, choose **GitHub Actions** as the source.
+2. The workflow deploys the frontend automatically after successful builds on `main`.
+3. Add an Actions variable named `VITE_API_BASE_URL` with the public backend API base URL (for example, `https://your-api-host.example.com`). Until a backend is deployed and this variable is set, the frontend can load but API-backed features will not work.
+4. Pages websites are public to anyone on the internet. Do not publish evidence, case records, API keys, or private data in the frontend.
 
 ## Deploy the backend
 
