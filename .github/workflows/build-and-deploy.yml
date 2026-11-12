@@ -41,7 +41,7 @@ jobs:
         working-directory: frontend
         env:
           GITHUB_PAGES: "true"
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://forensight-api.onrender.com' }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://forensight-api-o5qp.onrender.com' }}
         run: npm run build
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
