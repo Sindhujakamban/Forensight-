@@ -1,6 +1,7 @@
 import './style.css';
 
 const API = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:8080' : '')).replace(/\/$/, '');
+let authHeader = '';
 
 const state = {
   cases: [],
@@ -21,7 +22,21 @@ const state = {
 const root = document.querySelector('#root');
 
 root.innerHTML = `
-  <div class="app-shell">
+  <div class="login-gate" id="loginGate">
+    <form class="login-card" id="loginForm">
+      <div class="brand-mark">F</div>
+      <p class="eyebrow">FORENSIGHT WORKSPACE</p>
+      <h1>Investigator sign in</h1>
+      <p class="login-copy">Use the credentials configured for the ForenSight backend.</p>
+      <label for="loginUsername">Username</label>
+      <input id="loginUsername" name="username" autocomplete="username" value="investigator" required>
+      <label for="loginPassword">Password</label>
+      <input id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+      <p id="loginError" class="login-error" role="alert"></p>
+      <button class="primary-button" type="submit" id="loginButton">Sign in</button>
+    </form>
+  </div>
+  <div class="app-shell locked" id="appShell">
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark">F</div>
@@ -65,6 +80,7 @@ root.innerHTML = `
         </div>
         <div class="topbar-actions">
           <button class="icon-button" id="globalRefresh" title="Refresh">↻</button>
+          <button class="icon-button" id="logoutButton" title="Sign out" aria-label="Sign out">⇥</button>
           <button class="primary-button compact" id="topNewCase">+ New Case</button>
         </div>
       </header>
@@ -275,7 +291,11 @@ function setBackendStatus(online, text) {
 }
 
 async function request(path, options = {}) {
-  const response = await fetch(`${API}${path}`, options);
+  const response = await authorizedFetch(path, options);
+  if (response.status === 401) {
+    authHeader = '';
+    showLoginGate('Your sign-in expired. Please sign in again.');
+  }
   const contentType = response.headers.get('content-type') || '';
   const body = contentType.includes('application/json')
     ? await response.json().catch(() => null)
@@ -292,6 +312,110 @@ async function request(path, options = {}) {
 
   return body;
 }
+
+async function authorizedFetch(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (authHeader) headers.set('Authorization', authHeader);
+  return fetch(`${API}${path}`, { ...options, headers });
+}
+
+function showLoginGate(message = '') {
+  qs('#appShell').classList.add('locked');
+  qs('#loginGate').classList.remove('hidden');
+  qs('#loginError').textContent = message;
+  qs('#loginPassword').value = '';
+}
+
+function showWorkspace() {
+  qs('#loginGate').classList.add('hidden');
+  qs('#appShell').classList.remove('locked');
+  updateCaseBanner();
+  renderCaseDetail();
+  refreshAll();
+}
+
+async function signIn(event) {
+  event.preventDefault();
+  const username = qs('#loginUsername').value.trim();
+  const password = qs('#loginPassword').value;
+  const button = qs('#loginButton');
+  button.disabled = true;
+  qs('#loginError').textContent = 'Connecting…';
+
+  try {
+    const candidate = `Basic ${btoa(`${username}:${password}`)}`;
+    const response = await fetch(`${API}/api/auth/check`, {
+      headers: { Authorization: candidate }
+    });
+    if (!response.ok) {
+      qs('#loginError').textContent = response.status === 401
+        ? 'That username or password is not correct.'
+        : `The backend returned ${response.status}.`;
+      return;
+    }
+    authHeader = candidate;
+    qs('#loginPassword').value = '';
+    showWorkspace();
+  } catch {
+    qs('#loginError').textContent = 'Could not reach the backend. Check the backend URL and try again.';
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function signOut() {
+  authHeader = '';
+  state.cases = [];
+  state.evidence = [];
+  state.selectedCaseId = '';
+  state.selectedEvidenceId = '';
+  state.selectedEvidence = null;
+  state.analysis = null;
+  state.metadata = {};
+  state.dashboard = {};
+  showLoginGate();
+}
+
+function hydrateProtectedAssets() {
+  if (!authHeader) return;
+
+  root.querySelectorAll('img[data-api-asset]:not([data-api-loading])').forEach(async (image) => {
+    image.dataset.apiLoading = 'true';
+    try {
+      const response = await authorizedFetch(image.dataset.apiAsset);
+      if (response.status === 401) {
+        authHeader = '';
+        showLoginGate('Your sign-in expired. Please sign in again.');
+        return;
+      }
+      if (!response.ok) throw new Error('Asset request failed');
+      image.src = URL.createObjectURL(await response.blob());
+    } catch {
+      image.classList.add('image-error');
+    }
+  });
+
+  root.querySelectorAll('a[data-api-asset-link]:not([data-api-loading])').forEach(async (link) => {
+    link.dataset.apiLoading = 'true';
+    try {
+      const response = await authorizedFetch(link.dataset.apiAssetLink);
+      if (response.status === 401) {
+        authHeader = '';
+        showLoginGate('Your sign-in expired. Please sign in again.');
+        return;
+      }
+      if (!response.ok) throw new Error('Asset request failed');
+      link.href = URL.createObjectURL(await response.blob());
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+    } catch {
+      link.removeAttribute('href');
+      link.setAttribute('aria-disabled', 'true');
+    }
+  });
+}
+
+const protectedAssetObserver = new MutationObserver(() => hydrateProtectedAssets());
 
 function navigate(page) {
   state.page = page;
@@ -646,7 +770,7 @@ function renderAnalysis() {
     <div class="tab-panel active" data-tab-panel="overview">
       <div class="overview-grid">
         <div class="artifact-card"><div class="artifact-top"><span>Evidence</span><span class="tag">SOURCE</span></div><div class="artifact-body"><div class="data-line"><span>File type</span><strong>${escapeHtml(evidence.fileType || 'Unknown')}</strong></div><div class="data-line"><span>Size</span><strong>${formatBytes(evidence.fileSize)}</strong></div><div class="data-line"><span>Uploaded</span><strong>${escapeHtml(evidence.uploadedAt || '—')}</strong></div><div class="data-line"><span>Case</span><strong>${escapeHtml((state.cases.find((c) => c.id === evidence.caseId)?.title) || evidence.caseId || '—')}</strong></div></div></div>
-        <div class="artifact-card original-evidence-card"><div class="artifact-top"><span>Original evidence image</span><span class="tag">SOURCE FILE</span></div><div class="artifact-body original-image-body"><div class="original-image-preview-frame"><img class="evidence-original-preview" src="${API}/api/evidence/original/${encodeURIComponent(evidence.id)}?t=${Date.now()}" alt="Original evidence — full image" loading="eager" decoding="async" style="display:block!important;width:100%!important;height:auto!important;max-width:100%!important;max-height:520px!important;object-fit:contain!important;object-position:center center!important;aspect-ratio:auto!important;" onload="const d=this.closest('.original-image-body')?.querySelector('.original-image-dimensions');if(d)d.textContent=this.naturalWidth+' × '+this.naturalHeight+' px'" onerror="this.classList.add('image-error')"></div><div class="original-image-caption">Complete source image · <span class="original-image-dimensions">dimensions shown after loading</span> · <a href="${API}/api/evidence/original/${encodeURIComponent(evidence.id)}" target="_blank" rel="noopener">Open original file</a></div></div></div>
+        <div class="artifact-card original-evidence-card"><div class="artifact-top"><span>Original evidence image</span><span class="tag">SOURCE FILE</span></div><div class="artifact-body original-image-body"><div class="original-image-preview-frame"><img class="evidence-original-preview" data-api-asset="/api/evidence/original/${encodeURIComponent(evidence.id)}?t=${Date.now()}" alt="Original evidence — full image" loading="eager" decoding="async" style="display:block!important;width:100%!important;height:auto!important;max-width:100%!important;max-height:520px!important;object-fit:contain!important;object-position:center center!important;aspect-ratio:auto!important;" onload="const d=this.closest('.original-image-body')?.querySelector('.original-image-dimensions');if(d)d.textContent=this.naturalWidth+' × '+this.naturalHeight+' px'" onerror="this.classList.add('image-error')"></div><div class="original-image-caption">Complete source image · <span class="original-image-dimensions">dimensions shown after loading</span> · <a data-api-asset-link="/api/evidence/original/${encodeURIComponent(evidence.id)}">Open original file</a></div></div></div>
         <div class="artifact-card"><div class="artifact-top"><span>Assessment notes</span><span class="tag">INTERPRETATION</span></div><div class="artifact-body"><p class="long-text">${escapeHtml(analysis.explanation || 'No explanation available.')}</p></div></div>
       </div>
     </div>
@@ -654,7 +778,7 @@ function renderAnalysis() {
     <div class="tab-panel" data-tab-panel="metadata"><div id="metadataPanel" class="metadata-grid-large"><div class="loading-card small"><div class="spinner"></div><span>Loading metadata…</span></div></div></div>
 
     <div class="tab-panel" data-tab-panel="ela">
-      ${analysis.elaSupported ? `<div class="visual-card"><div class="visual-copy"><span class="section-kicker">ERROR LEVEL ANALYSIS</span><h3>ELA supporting visualization</h3><p>ELA highlights JPEG recompression differences only. A clean ELA result does not mean the image is authentic, and an anomaly does not prove editing.</p></div><img src="${API}/api/evidence/ela/${encodeURIComponent(evidence.id)}?t=${Date.now()}" alt="ELA visualization" onerror="this.classList.add('image-error')"></div>` : `<div class="empty-state small"><h4>ELA is not available for this image</h4><p>The current ELA implementation supports JPEG files. Metadata extraction and the optional TruFor integration can still be reviewed.</p></div>`}
+      ${analysis.elaSupported ? `<div class="visual-card"><div class="visual-copy"><span class="section-kicker">ERROR LEVEL ANALYSIS</span><h3>ELA supporting visualization</h3><p>ELA highlights JPEG recompression differences only. A clean ELA result does not mean the image is authentic, and an anomaly does not prove editing.</p></div><img data-api-asset="/api/evidence/ela/${encodeURIComponent(evidence.id)}?t=${Date.now()}" alt="ELA visualization" onerror="this.classList.add('image-error')"></div>` : `<div class="empty-state small"><h4>ELA is not available for this image</h4><p>The current ELA implementation supports JPEG files. Metadata extraction and the optional TruFor integration can still be reviewed.</p></div>`}
     </div>
 
     <div class="tab-panel" data-tab-panel="trufor">
@@ -673,20 +797,20 @@ function renderAnalysis() {
             <article class="trufor-preview-card">
               <div class="trufor-preview-card-heading">
                 <div><strong>Forgery localization heatmap</strong><small>Native TruFor map · RdBu_r colour scale</small></div>
-                <a href="${API}/api/evidence/trufor/${encodeURIComponent(evidence.id)}?t=${Date.now()}" target="_blank" rel="noopener noreferrer">Open full size ↗</a>
+                <a data-api-asset-link="/api/evidence/trufor/${encodeURIComponent(evidence.id)}?t=${Date.now()}">Open full size ↗</a>
               </div>
-              <a class="trufor-preview-image-link" href="${API}/api/evidence/trufor/${encodeURIComponent(evidence.id)}?t=${Date.now()}" target="_blank" rel="noopener noreferrer" aria-label="Open full-size TruFor localization heatmap">
-                <img class="trufor-preview-image" loading="eager" decoding="async" src="${API}/api/evidence/trufor/${encodeURIComponent(evidence.id)}?t=${Date.now()}" alt="TruFor forgery localization heatmap" onerror="this.hidden=true; this.closest('.trufor-preview-card').classList.add('preview-failed')">
+              <a class="trufor-preview-image-link" data-api-asset-link="/api/evidence/trufor/${encodeURIComponent(evidence.id)}?t=${Date.now()}" aria-label="Open full-size TruFor localization heatmap">
+                <img class="trufor-preview-image" loading="eager" decoding="async" data-api-asset="/api/evidence/trufor/${encodeURIComponent(evidence.id)}?t=${Date.now()}" alt="TruFor forgery localization heatmap" onerror="this.hidden=true; this.closest('.trufor-preview-card').classList.add('preview-failed')">
               </a>
               <div class="trufor-preview-fallback" role="status">The localization image could not be loaded. Check that the evidence has a saved TruFor heatmap and that the image endpoint returns PNG.</div>
             </article>
             <article class="trufor-preview-card">
               <div class="trufor-preview-card-heading">
                 <div><strong>TruFor confidence map</strong><small>Pixel-level model confidence · grayscale</small></div>
-                <a href="${API}/api/evidence/trufor-confidence/${encodeURIComponent(evidence.id)}?t=${Date.now()}" target="_blank" rel="noopener noreferrer">Open full size ↗</a>
+                <a data-api-asset-link="/api/evidence/trufor-confidence/${encodeURIComponent(evidence.id)}?t=${Date.now()}">Open full size ↗</a>
               </div>
-              <a class="trufor-preview-image-link" href="${API}/api/evidence/trufor-confidence/${encodeURIComponent(evidence.id)}?t=${Date.now()}" target="_blank" rel="noopener noreferrer" aria-label="Open full-size TruFor confidence map">
-                <img class="trufor-preview-image confidence-preview" loading="eager" decoding="async" src="${API}/api/evidence/trufor-confidence/${encodeURIComponent(evidence.id)}?t=${Date.now()}" alt="TruFor pixel-level confidence map" onerror="this.hidden=true; this.closest('.trufor-preview-card').classList.add('preview-failed')">
+              <a class="trufor-preview-image-link" data-api-asset-link="/api/evidence/trufor-confidence/${encodeURIComponent(evidence.id)}?t=${Date.now()}" aria-label="Open full-size TruFor confidence map">
+                <img class="trufor-preview-image confidence-preview" loading="eager" decoding="async" data-api-asset="/api/evidence/trufor-confidence/${encodeURIComponent(evidence.id)}?t=${Date.now()}" alt="TruFor pixel-level confidence map" onerror="this.hidden=true; this.closest('.trufor-preview-card').classList.add('preview-failed')">
               </a>
               <div class="trufor-preview-fallback" role="status">The confidence image could not be loaded. Check that the evidence has a saved TruFor confidence map and that the image endpoint returns PNG.</div>
             </article>
@@ -892,7 +1016,7 @@ async function downloadReport() {
   try {
     showToast('Generating forensic PDF…');
     const report = await request(`/api/report/${encodeURIComponent(state.selectedEvidenceId)}`);
-    const response = await fetch(`${API}/api/pdf/report`, {
+    const response = await authorizedFetch('/api/pdf/report', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(report)
@@ -934,6 +1058,8 @@ function showFile(file) {
 }
 
 function bindEvents() {
+  qs('#loginForm').addEventListener('submit', signIn);
+  qs('#logoutButton').addEventListener('click', signOut);
   qsa('.nav-item').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.page)));
   qs('#globalRefresh').addEventListener('click', refreshAll);
   qs('#dashboardRefresh').addEventListener('click', refreshAll);
@@ -969,11 +1095,9 @@ async function refreshAll() {
 
 function boot() {
   bindEvents();
-  updateCaseBanner();
-  renderCaseDetail();
-  loadDashboard();
-  loadCases();
-  checkHealth();
+  protectedAssetObserver.observe(root, { childList: true, subtree: true });
+  showLoginGate();
 }
 
 boot();
+
