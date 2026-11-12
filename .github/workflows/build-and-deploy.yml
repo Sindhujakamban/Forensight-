@@ -8,6 +8,7 @@ on:
       - "backend/**"
       - "Dockerfile"
       - "README.md"
+      - ".gitignore"
       - ".github/workflows/build-and-deploy.yml"
   workflow_dispatch:
 
