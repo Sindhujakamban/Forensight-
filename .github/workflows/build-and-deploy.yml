@@ -41,7 +41,7 @@ jobs:
         working-directory: frontend
         env:
           GITHUB_PAGES: "true"
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://forensight-api-o5qp.onrender.com' }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://forensight-api-br5x.onrender.com' }}
         run: npm run build
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -99,7 +99,7 @@ jobs:
       - name: Verify backend and MongoDB readiness
         shell: bash
         env:
-          BACKEND_URL: ${{ vars.VITE_API_BASE_URL || 'https://forensight-api-o5qp.onrender.com' }}
+          BACKEND_URL: ${{ vars.VITE_API_BASE_URL || 'https://forensight-api-br5x.onrender.com' }}
         run: |
           set -euo pipefail
           for attempt in $(seq 1 10); do
