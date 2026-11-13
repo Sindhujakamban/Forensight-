@@ -69,7 +69,7 @@ Create a fresh free MongoDB Atlas cluster at [MongoDB Atlas](https://www.mongodb
 - `TRUFOR_ENABLED=false` — keep disabled until TruFor model code and pretrained weights are installed
 - `TRUFOR_PYTHON` and `TRUFOR_BRIDGE` — set only when configuring TruFor
 
-All `/api/**` endpoints require HTTP Basic authentication; only `/api/health` is public for host health checks. The health check now verifies MongoDB connectivity, so Render will not mark the API healthy until the database can be reached. GitHub Pages shows an investigator sign-in screen and keeps the password in memory only. The current free Render service has an ephemeral filesystem: uploaded evidence can be lost on restart or redeploy. Use this free setup for a demo only. Before storing real forensic evidence, move uploads to durable, access-controlled object storage or use a paid persistent disk (Render persistent disks are only available on paid services).
+All `/api/**` endpoints require HTTP Basic authentication; only `/api/health` is public for host health checks. The health check now verifies MongoDB connectivity, so Render will not mark the API healthy until the database can be reached. GitHub Pages shows an investigator sign-in screen and keeps the password in memory only. The Render Blueprint is configured for a paid Standard web service (1 CPU, 2 GB RAM) and a 5 GB persistent disk mounted at `/app/uploads`, so uploaded evidence and generated maps survive deploys and restarts. Render currently lists the Standard/`1c-2g` web-service plan at $25/month and SSD storage at $0.25/GB/month; the 5 GB disk adds about $1.25/month (approximately $26.25/month total before any bandwidth overages).
 
 ## Forensic scoring
 
@@ -83,7 +83,9 @@ The ZIP's ELA implementation supports JPEG/JPG. For image formats where ELA is u
 
 ## TruFor limitation
 
-The ZIP contains the Python bridge script but not the TruFor model repository or pretrained weights. The bridge also previously contained machine-specific absolute paths. TruFor is therefore disabled by default. Deploy the model code and weights, fix the bridge paths for the host, and configure the variables above before enabling it.
+The uploaded ZIP contains the Java scoring pipeline and a Python bridge, but not the upstream TruFor source tree or pretrained checkpoint. The Docker build now fetches the official GRIP-UNINA inference source at a pinned commit, downloads the official pretrained weight archive (with the upstream collaborator's published mirror as fallback), verifies the upstream-published MD5, and retains the upstream license files in the image. The bridge uses the official lightweight `test_docker/src` inference implementation with CPU mode (`-gpu -1`) and writes native TruFor localization/confidence maps to the persistent uploads disk.
+
+**License restriction:** GRIP-UNINA's TruFor code and weights are licensed for informational and nonprofit purposes only; industrial or profit-oriented use is prohibited. This deployment is configured for an academic/non-commercial project only. Keep the upstream license notices and cite GRIP-UNINA when publishing results. Do not use TruFor for a commercial service without written permission from the rights holders. The model weights are downloaded during the container build and are not committed to this public Git repository.
 
 ## Security and included files
 
