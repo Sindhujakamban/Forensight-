@@ -1,0 +1,54 @@
+name: Validate TruFor CPU container
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - "backend/trufor/**"
+      - "render.yaml"
+      - ".github/workflows/validate-trufor-container.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-run-model:
+    name: Build image and run TruFor with Render-like CPU/memory limits
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build production Docker image
+        run: docker build --progress=plain -t forensight-trufor-smoke .
+
+      - name: Create a synthetic JPEG test image
+        run: |
+          mkdir -p /tmp/forensight-trufor-smoke
+          python - <<'PY'
+          from PIL import Image, ImageDraw
+          image = Image.new("RGB", (512, 512), (120, 145, 170))
+          draw = ImageDraw.Draw(image)
+          draw.rectangle((80, 90, 360, 390), fill=(180, 95, 75))
+          draw.ellipse((180, 170, 330, 320), fill=(35, 180, 110))
+          image.save("/tmp/forensight-trufor-smoke/sample.jpg", quality=95)
+          PY
+
+      - name: Run real TruFor inference under 1 CPU / 1.8 GB memory
+        timeout-minutes: 25
+        run: |
+          docker run --rm \
+            --memory=1800m \
+            --cpus=1 \
+            -e TRUFOR_ROOT=/opt/trufor \
+            -e TRUFOR_PYTHON=python \
+            -e TRUFOR_OUTPUT_DIR=/tmp/forensight-trufor-output \
+            -v /tmp/forensight-trufor-smoke:/tmp/forensight-trufor-smoke:ro \
+            --entrypoint python \
+            forensight-trufor-smoke \
+            /app/backend/trufor/trufor_bridge.py \
+            /tmp/forensight-trufor-smoke/sample.jpg \
+            ci-smoke-test
