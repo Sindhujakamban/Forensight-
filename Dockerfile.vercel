@@ -34,6 +34,8 @@ ENV TRUFOR_BRIDGE=/app/backend/trufor/trufor_bridge.py
 ENV TRUFOR_OUTPUT_DIR=/tmp/forensight-trufor
 ENV TRUFOR_GPU=-1
 ENV TRUFOR_MAX_SIDE=768
+ENV MALLOC_ARENA_MAX=2
+ENV NUMEXPR_NUM_THREADS=1
 ENV MPLCONFIGDIR=/tmp/matplotlib
 ENV JAVA_TOOL_OPTIONS="-Xms48m -Xmx256m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m -XX:MaxDirectMemorySize=64m -XX:+UseSerialGC"
 
@@ -61,6 +63,23 @@ RUN git clone --depth 1 https://github.com/grip-unina/TruFor.git /tmp/TruFor \
     && cp /tmp/TruFor/test_docker/LICENSE_CMX.txt /opt/trufor/LICENSE_CMX.txt \
     && printf 'Official source: https://github.com/grip-unina/TruFor\nPinned commit: %s\n' "$TRUFOR_COMMIT" > /opt/trufor/UPSTREAM.txt \
     && rm -rf /tmp/TruFor
+
+# Release the loaded checkpoint tensors as soon as model parameters are copied.
+# The official test script otherwise keeps both copies live through inference,
+# needlessly increasing peak memory in a 2 GB Hobby container.
+RUN python - <<'PY'
+from pathlib import Path
+path = Path("/opt/trufor/src/trufor_test.py")
+source = path.read_text()
+needle = "model.load_state_dict(checkpoint['state_dict'])"
+replacement = """model.load_state_dict(checkpoint['state_dict'])
+del checkpoint
+import gc
+gc.collect()"""
+if needle not in source:
+    raise SystemExit("Expected upstream checkpoint-loading statement was not found; refusing an unverified patch.")
+path.write_text(source.replace(needle, replacement, 1))
+PY
 
 RUN set -eux; \
     WEIGHTS_ZIP=/tmp/TruFor_weights.zip; \

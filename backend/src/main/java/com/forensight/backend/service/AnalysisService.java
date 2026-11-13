@@ -178,7 +178,7 @@ public class AnalysisService {
             result.setTruForAvailable(true);
             result.setTruForAuthenticity(truForAuthenticity);
             result.setTruForConfidence(truFor.getConfidence());
-            result.setTruForStatus("TruFor executed successfully. Native localization heatmap and confidence map were saved in GridFS.");
+            result.setTruForStatus("TruFor executed successfully. Native localization heatmap and confidence map were saved in GridFS. To fit the free Vercel memory limit, TruFor inference used a proportional copy capped at 768 pixels on the longest side; the original-resolution source image was retained for ELA and metadata.");
             return analysisResultRepository.save(result);
 
         } catch (IOException exception) {
