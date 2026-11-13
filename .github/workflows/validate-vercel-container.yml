@@ -1,0 +1,82 @@
+name: Validate Vercel full-stack container
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile.vercel"
+      - "vercel.json"
+      - "frontend/**"
+      - "backend/**"
+      - ".github/workflows/validate-vercel-container.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build Vercel container and run TruFor with Spring Boot resident
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build Vercel full-stack image
+        run: docker build --progress=plain -f Dockerfile.vercel -t forensight-vercel .
+
+      - name: Create a synthetic JPEG
+        run: |
+          python -m pip install --quiet Pillow
+          mkdir -p /tmp/forensight-sample
+          python - <<'PY'
+          from PIL import Image, ImageDraw
+          image = Image.new("RGB", (512, 512), (120, 145, 170))
+          draw = ImageDraw.Draw(image)
+          draw.rectangle((80, 90, 360, 390), fill=(180, 95, 75))
+          draw.ellipse((180, 170, 330, 320), fill=(35, 180, 110))
+          image.save("/tmp/forensight-sample/sample.jpg", quality=95)
+          PY
+
+      - name: Start the real Java web server under 2 GB / 1 CPU
+        run: |
+          docker run -d --name forensight-vercel-test \
+            --memory=1950m --cpus=1 -p 8080:8080 \
+            -e APP_USERNAME=ci-investigator \
+            -e APP_PASSWORD=ci-test-password \
+            -e MONGODB_URI=mongodb://127.0.0.1:27017/forensight_ci \
+            -e MONGODB_DATABASE=forensight_ci \
+            forensight-vercel
+          for i in $(seq 1 60); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' -u ci-investigator:ci-test-password http://localhost:8080/api/auth/check || true)"
+            if [ "$code" = "204" ]; then
+              echo "Spring Boot started and authenticated API is responding."
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs forensight-vercel-test
+          exit 1
+
+      - name: Copy JPEG into the same container
+        run: docker cp /tmp/forensight-sample/sample.jpg forensight-vercel-test:/tmp/sample.jpg
+
+      - name: Run real TruFor in the same 2 GB container as Spring Boot
+        timeout-minutes: 5
+        run: |
+          docker exec forensight-vercel-test /usr/local/bin/python3 \
+            /app/backend/trufor/trufor_bridge.py /tmp/sample.jpg ci-memory-test
+
+      - name: Verify bundled frontend is served by Spring Boot
+        run: |
+          curl --fail --silent --show-error http://localhost:8080/ -o /tmp/forensight-index.html
+          grep -qi "ForenSight" /tmp/forensight-index.html
+
+      - name: Print application logs if the combined runtime failed
+        if: failure()
+        run: docker logs forensight-vercel-test || true
+
+      - name: Stop test container
+        if: always()
+        run: docker rm -f forensight-vercel-test || true

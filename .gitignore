@@ -42,3 +42,6 @@ project-package/
 # Local TruFor checkout, pretrained weights, and venv (never commit model files)
 .trufor/
 .trufor-venv/
+
+# Vercel local project metadata
+.vercel/

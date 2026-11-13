@@ -945,6 +945,10 @@ async function uploadEvidence() {
     showToast('Choose an image first.', 'error');
     return;
   }
+  if (state.file.size > 4 * 1024 * 1024) {
+    showToast('For the free Vercel deployment, choose an image smaller than 4 MB.', 'error');
+    return;
+  }
 
   const button = qs('#analyzeButton');
   const progress = qs('#analysisProgress');

@@ -69,7 +69,7 @@ Create a fresh free MongoDB Atlas cluster at [MongoDB Atlas](https://www.mongodb
 - `TRUFOR_ENABLED=false` — keep disabled until TruFor model code and pretrained weights are installed
 - `TRUFOR_PYTHON` and `TRUFOR_BRIDGE` — set only when configuring TruFor
 
-All `/api/**` endpoints require HTTP Basic authentication; only `/api/health` is public for host health checks. The health check now verifies MongoDB connectivity, so Render will not mark the API healthy until the database can be reached. GitHub Pages shows an investigator sign-in screen and keeps the password in memory only. The Render Blueprint is intentionally set to the Free plan. The Free service has limited CPU/RAM, sleeps when idle, and has no persistent disk. It is suitable only for a demo and does not run the TruFor model. No paid Render compute or storage is configured.
+All `/api/**` endpoints require HTTP Basic authentication; only `/api/health` is public for host health checks. The health check now verifies MongoDB connectivity, so Render will not mark the API healthy until the database can be reached. GitHub Pages shows an investigator sign-in screen and keeps the password in memory only. The existing Render Blueprint remains on Free for a lightweight fallback only. The complete model-enabled deployment target is Vercel Hobby; it does not require a paid Render instance or disk.
 
 ## Forensic scoring
 
@@ -93,21 +93,24 @@ Local `.env` files, MongoDB credentials, evidence uploads, generated analysis da
 
 
 
-## Zero-cost full TruFor analysis on Windows
+## Deploy the full application on Vercel Hobby
 
-Render Free does not have enough compute for the TruFor model and has no persistent disk. To avoid monthly charges, run the full application locally on the investigator's Windows computer and use the existing MongoDB Atlas database. The local backend stores uploaded evidence and TruFor maps in `backend/uploads` on that computer; keep the computer on while using the app.
+The root `Dockerfile.vercel` packages the Vite frontend, Spring Boot API, official CPU TruFor implementation, and pretrained checkpoint into one Vercel Container Runtime deployment. Spring Boot serves the frontend and API from the same origin. The container is stateless, so uploaded evidence, ELA images, TruFor heatmaps, and confidence maps are persisted in MongoDB Atlas GridFS.
 
-1. Install Python 3.10, JDK 25, Node.js 22 or newer, and Git.
-2. From the repository root, open PowerShell and run:
+Vercel Hobby is free for personal, non-commercial projects and currently includes 4 active CPU-hours and 360 GB-hours of provisioned memory per month. Hobby functions use 2 GB / 1 vCPU and have a 5-minute maximum duration with Fluid Compute. Vercel's function request payload limit is 4.5 MB, so this deployment caps image uploads at 4 MB to leave room for multipart overhead. The free limits can pause further compute when exhausted; do not upgrade or enable paid usage.
 
-   ```powershell
-   Set-ExecutionPolicy -Scope Process Bypass
-   .\setup-and-run-local.ps1
-   ```
+### MongoDB Atlas environment variables for Vercel
 
-3. The script downloads the official TruFor source and 248 MB weights directly to a local ignored folder, verifies the official checksum, installs PyTorch with CUDA 11.3 for an NVIDIA GPU when available (CPU fallback otherwise), and starts the local backend and Vite frontend.
-4. Paste the MongoDB Atlas URI and set the investigator login password when prompted. Secrets are held in the local process environment; they are not written into Git.
-5. Open `http://localhost:5173`, sign in as `investigator`, and upload evidence again from your computer. Files uploaded to the old Render Free instance are not present on your local disk.
+In Vercel Project Settings → Environment Variables, add `MONGODB_URI` (the private Atlas connection string), `MONGODB_DATABASE=forensight_db`, `APP_USERNAME=investigator`, and a new `APP_PASSWORD`. Do not commit secrets to GitHub or paste them into chat. The existing Atlas Free cluster has a 512 MB storage cap shared by records, indexes, and GridFS uploads; monitor usage and remove test evidence you no longer need.
 
-For the ZIP's complete 75/25 score, use an original JPG/JPEG evidence file. The original ELA implementation supports JPEG/JPG only. PNG files still receive the original TruFor-only result; they do not get a fabricated ELA component. The local setup uses the computer's GPU when PyTorch can see it, avoiding paid cloud compute.
+### Import into Vercel
+
+1. Sign in to Vercel and choose **Add New → Project**.
+2. Import `Sindhujakamban/Forensight-` from GitHub.
+3. Keep the project root as `./`. Vercel reads `vercel.json` and uses `Dockerfile.vercel` as the container deployment source.
+4. Select the **Hobby** plan only. Do not start a Pro trial, add paid usage, or change billing.
+5. Add the four environment variables listed above before deploying.
+6. Deploy. The production URL serves both the frontend and API from one origin.
+
+This deployment is for personal academic/non-commercial use only. TruFor is also licensed by GRIP-UNINA for informational and nonprofit use; retain the upstream licence files and cite the authors in published results.
 
