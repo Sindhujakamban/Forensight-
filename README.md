@@ -71,6 +71,14 @@ Create a fresh free MongoDB Atlas cluster at [MongoDB Atlas](https://www.mongodb
 
 All `/api/**` endpoints require HTTP Basic authentication; only `/api/health` is public for host health checks. The health check now verifies MongoDB connectivity, so Render will not mark the API healthy until the database can be reached. GitHub Pages shows an investigator sign-in screen and keeps the password in memory only. The current free Render service has an ephemeral filesystem: uploaded evidence can be lost on restart or redeploy. Use this free setup for a demo only. Before storing real forensic evidence, move uploads to durable, access-controlled object storage or use a paid persistent disk (Render persistent disks are only available on paid services).
 
+## Forensic scoring
+
+The restored original combined formula is **ELA 40% + metadata availability 20% + TruFor authenticity 40%**. The full formula is used only when the TruFor model completes successfully. The original risk bands are LOW at 80 or above, MEDIUM at 50–79.99, and HIGH below 50; the original result threshold is AUTHENTIC at 70 or above, otherwise MANIPULATED.
+
+ELA screening and visualization accept JPEG and PNG. PNG files are recompressed to JPEG for the ELA comparison, so the result is a recompression-based screening signal rather than proof of the image's original compression history.
+
+When TruFor is not installed or fails on the host, the backend still produces a clearly labelled **PRELIMINARY** result using ELA and metadata only. Their original 40:20 relative weights are normalized across the available 60% of signals. The absent TruFor 40% score is never invented; preliminary results are not the complete original combined assessment.
+
 ## TruFor limitation
 
 The ZIP contains the Python bridge script but not the TruFor model repository or pretrained weights. The bridge also previously contained machine-specific absolute paths. TruFor is therefore disabled by default. Deploy the model code and weights, fix the bridge paths for the host, and configure the variables above before enabling it.
