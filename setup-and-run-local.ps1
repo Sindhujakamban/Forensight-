@@ -192,6 +192,11 @@ try {
         Write-Warning "The API did not report MongoDB UP yet. Check the backend terminal, Atlas IP allowlist, and connection URI."
     }
 
+    # The backend child has its own inherited environment now. Clear database
+    # and investigator secrets before starting the Vite process.
+    $env:MONGODB_URI = $null
+    $env:APP_PASSWORD = $null
+
     $FrontendDir = Join-Path $RepoRoot "frontend"
     $FrontendDirLiteral = $FrontendDir.Replace("'", "''")
     $env:VITE_API_BASE_URL = "http://localhost:8080"
