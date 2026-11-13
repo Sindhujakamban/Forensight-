@@ -28,7 +28,7 @@ public class EvidenceService {
             AnalysisResultRepository analysisResultRepository,
             CaseRepository caseRepository,
             EvidenceFileStorageService fileStorage,
-            @Value("\${forensight.upload.max-bytes:4194304}") long maxUploadBytes) {
+            @Value("${forensight.upload.max-bytes:4194304}") long maxUploadBytes) {
         this.evidenceRepository = evidenceRepository;
         this.analysisResultRepository = analysisResultRepository;
         this.caseRepository = caseRepository;
