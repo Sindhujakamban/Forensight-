@@ -77,3 +77,34 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
+
+  smoke-test-live:
+    name: Smoke test deployed frontend and API
+    needs: [deploy-pages]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify public frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 5 --retry-delay 5 --retry-connrefused \
+            https://sindhujakamban.github.io/Forensight-/ -o /tmp/forensight-index.html
+          grep -qi "ForenSight" /tmp/forensight-index.html
+      - name: Verify backend and MongoDB readiness
+        shell: bash
+        env:
+          BACKEND_URL: ${{ vars.VITE_API_BASE_URL || 'https://forensight-api-o5qp.onrender.com' }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 18); do
+            response="$(curl --silent --show-error --fail --max-time 20 "${BACKEND_URL%/}/api/health" 2>/dev/null || true)"
+            if echo "$response" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"' \
+              && echo "$response" | grep -q '"database"[[:space:]]*:[[:space:]]*"UP"'; then
+              echo "Backend and MongoDB are healthy at ${BACKEND_URL}."
+              exit 0
+            fi
+            echo "Backend not ready yet (attempt $attempt/18)."
+            sleep 10
+          done
+          echo "::error::Backend or MongoDB is not healthy. Configure MONGODB_URI and APP_PASSWORD in the Render service."
+          exit 1
