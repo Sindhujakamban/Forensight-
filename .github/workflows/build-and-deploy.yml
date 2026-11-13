@@ -65,10 +65,11 @@ jobs:
         working-directory: backend
         env:
           APP_USERNAME: ci-investigator
-          APP_PASSWORD: ci-only-not-a-production-secret
           MONGODB_URI: mongodb://localhost:27017/forensight_ci
           MONGODB_DATABASE: forensight_ci
-        run: bash ./mvnw -B verify
+        run: |
+          export APP_PASSWORD="$(openssl rand -hex 24)"
+          bash ./mvnw -B verify
 
   deploy-pages:
     name: Deploy frontend to GitHub Pages
@@ -101,15 +102,15 @@ jobs:
           BACKEND_URL: ${{ vars.VITE_API_BASE_URL || 'https://forensight-api-o5qp.onrender.com' }}
         run: |
           set -euo pipefail
-          for attempt in $(seq 1 18); do
-            response="$(curl --silent --show-error --fail --max-time 20 "${BACKEND_URL%/}/api/health" 2>/dev/null || true)"
+          for attempt in $(seq 1 10); do
+            response="$(curl --silent --show-error --fail --connect-timeout 4 --max-time 8 "${BACKEND_URL%/}/api/health" 2>/dev/null || true)"
             if echo "$response" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"' \
               && echo "$response" | grep -q '"database"[[:space:]]*:[[:space:]]*"UP"'; then
               echo "Backend and MongoDB are healthy at ${BACKEND_URL}."
               exit 0
             fi
-            echo "Backend not ready yet (attempt $attempt/18)."
-            sleep 10
+            echo "Backend not ready yet (attempt $attempt/10)."
+            sleep 5
           done
           echo "::error::Backend or MongoDB is not healthy. Configure MONGODB_URI and APP_PASSWORD in the Render service."
           exit 1
