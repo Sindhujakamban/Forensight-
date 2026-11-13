@@ -1,6 +1,7 @@
 package com.forensight.backend.model;
 
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -151,6 +152,7 @@ public class Evidence {
 
 
 
+    @JsonIgnore
     public String getFilePath() {
         return filePath;
     }
@@ -169,6 +171,7 @@ public class Evidence {
     // ELA PATH
 
 
+    @JsonIgnore
     public String getElaPath() {
         return elaPath;
     }
@@ -179,8 +182,10 @@ public class Evidence {
         this.elaPath = elaPath;
     }
 
+    @JsonIgnore
     public String getTruforPath() { return truforPath; }
     public void setTruforPath(String truforPath) { this.truforPath = truforPath; }
+    @JsonIgnore
     public String getTruforConfidencePath() { return truforConfidencePath; }
     public void setTruforConfidencePath(String truforConfidencePath) { this.truforConfidencePath = truforConfidencePath; }
 
