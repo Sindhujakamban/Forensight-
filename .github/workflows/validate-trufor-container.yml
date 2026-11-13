@@ -49,7 +49,7 @@ jobs:
             -e TRUFOR_PYTHON=python \
             -e TRUFOR_OUTPUT_DIR=/tmp/forensight-trufor-output \
             -v /tmp/forensight-trufor-smoke:/tmp/forensight-trufor-smoke:ro \
-            --entrypoint python \
+            --entrypoint /usr/local/bin/python3 \
             forensight-trufor-smoke \
             /app/backend/trufor/trufor_bridge.py \
             /tmp/forensight-trufor-smoke/sample.jpg \
