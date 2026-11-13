@@ -71,28 +71,14 @@ public class ElaAnalysisService {
                     "Unable to read image"
             );
         }
-
-
         // -----------------------------------------------------
-        // Check JPEG
+        // Recompress supported image inputs as JPEG
         // -----------------------------------------------------
+        // This preserves the original ForenSight behavior for JPEG and
+        // PNG files. For PNG, interpret differences as a recompression
+        // screening signal rather than proof of the original edit history.
 
-        String format =
-                getExtension(originalFile);
-
-
-        if (!format.equalsIgnoreCase("jpg")
-                && !format.equalsIgnoreCase("jpeg")) {
-
-            return new ElaResult(
-                    "UNSUPPORTED",
-                    0.0,
-                    "ELA currently supports JPEG images only."
-            );
-        }
-
-
-        // -----------------------------------------------------
+// -----------------------------------------------------
         // Create temporary recompressed JPEG
         // -----------------------------------------------------
 
