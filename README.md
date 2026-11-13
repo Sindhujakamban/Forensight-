@@ -50,13 +50,13 @@ GitHub Pages serves only static frontend files; it does not host the Spring Boot
 
 1. The repository is public and Pages publishes only the static frontend. The Spring Boot API and MongoDB must be hosted separately.
 2. Pages websites are public to anyone on the internet, even when the source repository is private. Do not publish evidence, case records, API keys, or private data in the frontend.
-3. After Pages is available for this repository, open **Settings → Pages** and choose **GitHub Actions** as the source.
-4. The frontend build defaults to `https://forensight-api.onrender.com`. To use another backend, add a repository Actions variable named `VITE_API_BASE_URL` with its public API base URL.
+3. GitHub Pages is already configured through GitHub Actions; the most recent deployment completed successfully. The public frontend is `https://sindhujakamban.github.io/Forensight-/`.
+4. The frontend build defaults to `https://forensight-api-o5qp.onrender.com`. To use another backend, add a repository Actions variable named `VITE_API_BASE_URL` with its public API base URL.
 5. Add a repository Actions variable named `DEPLOY_TO_GITHUB_PAGES` with value `true`. Rerun the workflow. Without that variable, CI builds both components but intentionally skips the public deployment.
 
 ## Deploy the backend
 
-The included `render.yaml` is a Render Blueprint for the backend. Create it from the public GitHub repository at Render; the service URL is `https://forensight-api.onrender.com`. Set these variables in the Render dashboard before the service can start:
+The included `render.yaml` is a Render Blueprint for the backend. Create it from the public GitHub repository at Render; the service URL is `https://forensight-api-o5qp.onrender.com`. Create the Blueprint from the repository, then set these variables in the Render dashboard before the service can become healthy. The GitHub Pages build currently targets `https://forensight-api-o5qp.onrender.com`; change the repository Actions variable `VITE_API_BASE_URL` if Render assigns a different URL:
 
 - `MONGODB_URI` — a newly rotated MongoDB Atlas connection string (secret)
 - `APP_PASSWORD` — a unique, strong password for the investigator account (secret)
@@ -65,7 +65,7 @@ The included `render.yaml` is a Render Blueprint for the backend. Create it from
 - `TRUFOR_ENABLED=false` — keep disabled until TruFor model code and pretrained weights are installed
 - `TRUFOR_PYTHON` and `TRUFOR_BRIDGE` — set only when configuring TruFor
 
-All `/api/**` endpoints require HTTP Basic authentication; only `/api/health` is public for host health checks. GitHub Pages will show a sign-in screen and send credentials only in memory. The included free Render service has an ephemeral filesystem. Evidence uploads can be lost when it restarts or sleeps, so do not use it to retain real forensic evidence. Configure durable, access-controlled object storage or a paid persistent disk before real investigations.
+All `/api/**` endpoints require HTTP Basic authentication; only `/api/health` is public for host health checks. The health check now verifies MongoDB connectivity, so Render will not mark the API healthy until the database can be reached. GitHub Pages shows an investigator sign-in screen and keeps the password in memory only. The current free Render service has an ephemeral filesystem: uploaded evidence can be lost on restart or redeploy. Use this free setup for a demo only. Before storing real forensic evidence, move uploads to durable, access-controlled object storage or use a paid persistent disk (Render persistent disks are only available on paid services).
 
 ## TruFor limitation
 
