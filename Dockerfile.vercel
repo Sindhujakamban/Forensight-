@@ -33,8 +33,9 @@ ENV TRUFOR_PYTHON=/usr/local/bin/python3
 ENV TRUFOR_BRIDGE=/app/backend/trufor/trufor_bridge.py
 ENV TRUFOR_OUTPUT_DIR=/tmp/forensight-trufor
 ENV TRUFOR_GPU=-1
+ENV TRUFOR_MAX_SIDE=768
 ENV MPLCONFIGDIR=/tmp/matplotlib
-ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=20 -XX:InitialRAMPercentage=5 -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=48m"
+ENV JAVA_TOOL_OPTIONS="-Xms48m -Xmx256m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m -XX:MaxDirectMemorySize=64m -XX:+UseSerialGC"
 
 COPY --from=java-runtime /opt/java/openjdk /opt/java/openjdk
 RUN apt-get update \

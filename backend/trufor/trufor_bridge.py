@@ -5,6 +5,7 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
+from PIL import Image
 
 import matplotlib
 matplotlib.use("Agg")
@@ -17,6 +18,7 @@ TEST_SCRIPT = TRUFOR_DIR / "src" / "trufor_test.py"
 MODEL = TRUFOR_DIR / "weights" / "trufor.pth.tar"
 OUTPUT_ROOT = Path(os.environ.get("TRUFOR_OUTPUT_DIR", "uploads/trufor")).resolve()
 TIMEOUT_SECONDS = 900
+MAX_MODEL_SIDE = int(os.environ.get('TRUFOR_MAX_SIDE', '768'))
 
 
 def fail(message, code=1):
@@ -42,6 +44,40 @@ def main():
     output_dir = OUTPUT_ROOT / safe_id / uuid.uuid4().hex
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # TruFor's official test loader preserves every source pixel. On a 2 GB
+    # serverless container, large camera images can OOM during feature-map
+    # construction. Preserve the original for ELA/metadata in Java, but feed
+    # the model a proportional, high-quality copy capped at MAX_MODEL_SIDE.
+    # This keeps the original 75/25 score formula while making inference
+    # predictable under the Vercel Hobby memory ceiling.
+    try:
+        with Image.open(image_path) as source_image:
+            original_width, original_height = source_image.size
+            inference_image = source_image.convert("RGB")
+            inference_image.thumbnail(
+                (MAX_MODEL_SIDE, MAX_MODEL_SIDE),
+                Image.Resampling.LANCZOS
+            )
+            model_width, model_height = inference_image.size
+            if (model_width, model_height) != (original_width, original_height):
+                resized_suffix = ".png" if image_path.suffix.lower() == ".png" else ".jpg"
+                inference_image_path = output_dir / ("trufor_input" + resized_suffix)
+                save_options = {"optimize": True}
+                if resized_suffix == ".jpg":
+                    save_options["quality"] = 95
+                inference_image.save(inference_image_path, **save_options)
+            else:
+                inference_image_path = image_path
+    except Exception as exc:
+        fail(f"Could not prepare TruFor input image: {exc}")
+
+    print(
+        f"Input image: {original_width}x{original_height}; "
+        f"TruFor model input: {model_width}x{model_height}; "
+        f"maximum side: {MAX_MODEL_SIDE}px",
+        flush=True
+    )
+
     gpu_setting = os.environ.get("TRUFOR_GPU", "-1")
     try:
         gpu_id = int(gpu_setting)
@@ -52,7 +88,7 @@ def main():
         PYTHON,
         str(TEST_SCRIPT),
         "-gpu", str(gpu_id),
-        "-in", str(image_path),
+        "-in", str(inference_image_path),
         "-out", str(output_dir),
         "TEST.MODEL_FILE", str(MODEL),
     ]
@@ -61,6 +97,8 @@ def main():
     env["OMP_NUM_THREADS"] = "1"
     env["MKL_NUM_THREADS"] = "1"
     env["OPENBLAS_NUM_THREADS"] = "1"
+    env["NUMEXPR_NUM_THREADS"] = "1"
+    env["MALLOC_ARENA_MAX"] = "2"
     env["PYTHONUNBUFFERED"] = "1"
 
     print("Running official GRIP-UNINA TruFor inference on CPU.", flush=True)

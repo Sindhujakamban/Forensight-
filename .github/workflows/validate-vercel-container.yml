@@ -26,16 +26,16 @@ jobs:
       - name: Build Vercel full-stack image
         run: docker build --progress=plain -f Dockerfile.vercel -t forensight-vercel .
 
-      - name: Create a synthetic JPEG
+      - name: Create a high-resolution synthetic JPEG
         run: |
           python -m pip install --quiet Pillow
           mkdir -p /tmp/forensight-sample
           python - <<'PY'
           from PIL import Image, ImageDraw
-          image = Image.new("RGB", (512, 512), (120, 145, 170))
+          image = Image.new("RGB", (4096, 3072), (120, 145, 170))
           draw = ImageDraw.Draw(image)
-          draw.rectangle((80, 90, 360, 390), fill=(180, 95, 75))
-          draw.ellipse((180, 170, 330, 320), fill=(35, 180, 110))
+          draw.rectangle((640, 540, 2880, 2340), fill=(180, 95, 75))
+          draw.ellipse((1440, 1020, 2640, 1920), fill=(35, 180, 110))
           image.save("/tmp/forensight-sample/sample.jpg", quality=95)
           PY
 
