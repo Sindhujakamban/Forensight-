@@ -14,14 +14,19 @@ import com.lowagie.text.pdf.PdfWriter;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.time.LocalDateTime;
+import com.forensight.backend.service.EvidenceFileStorageService;
 import java.time.format.DateTimeFormatter;
 
 
 @Service
 public class PdfService {
 
+    private final EvidenceFileStorageService fileStorage;
+
+    public PdfService(EvidenceFileStorageService fileStorage) {
+        this.fileStorage = fileStorage;
+    }
 
     // =========================================================
     // GENERATE FORENSIC PDF
@@ -589,106 +594,20 @@ public class PdfService {
     // ADD IMAGE
     // =========================================================
 
-    private void addImageToDocument(
-            Document document,
-            String imagePath
-    ) {
-
-
-        if (imagePath == null ||
-                imagePath.isBlank()) {
-
-            document.add(
-                    new Paragraph(
-                            "Image not available."
-                    )
-            );
-
+    private void addImageToDocument(Document document, String imageReference) {
+        if (imageReference == null || imageReference.isBlank()) {
+            document.add(new Paragraph("Image not available."));
             return;
-
         }
-
-
         try {
-
-
-            // Convert Windows path to normal path
-
-            String cleanPath =
-                    imagePath
-                            .replace("\\", File.separator)
-                            .replace("/", File.separator);
-
-
-            File imageFile =
-                    new File(cleanPath);
-
-
-            if (!imageFile.exists()) {
-
-                // Try relative path from project directory
-
-                imageFile =
-                        new File(
-                                System.getProperty(
-                                        "user.dir"
-                                ),
-                                cleanPath
-                        );
-
-            }
-
-
-            if (!imageFile.exists()) {
-
-                document.add(
-                        new Paragraph(
-                                "Image file not found: "
-                                        + imagePath
-                        )
-                );
-
-                return;
-
-            }
-
-
-            Image image =
-                    Image.getInstance(
-                            imageFile.getAbsolutePath()
-                    );
-
-
-            // Fit image inside PDF page
-
-            image.scaleToFit(
-                    480,
-                    320
-            );
-
-
-            image.setAlignment(
-                    Element.ALIGN_CENTER
-            );
-
-
+            Image image = Image.getInstance(fileStorage.readAllBytes(imageReference));
+            image.scaleToFit(480, 320);
+            image.setAlignment(Element.ALIGN_CENTER);
             document.add(image);
-
-
-        } catch (Exception e) {
-
-
-            document.add(
-                    new Paragraph(
-                            "Unable to load image: "
-                                    + imagePath
-                    )
-            );
-
+        } catch (Exception exception) {
+            document.add(new Paragraph("Unable to load stored image artifact."));
         }
-
     }
-
 
     // =========================================================
     // FILE SIZE FORMAT

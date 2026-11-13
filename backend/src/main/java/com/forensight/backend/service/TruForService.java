@@ -66,10 +66,10 @@ public class TruForService {
 
         boolean finished;
         try {
-            finished = process.waitFor(15, TimeUnit.MINUTES);
+            finished = process.waitFor(105, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
-                throw new IOException("TruFor timed out after 15 minutes.");
+                throw new IOException("TruFor timed out before the Vercel request deadline.");
             }
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();

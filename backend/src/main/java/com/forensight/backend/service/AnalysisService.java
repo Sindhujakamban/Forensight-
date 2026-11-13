@@ -1,6 +1,8 @@
 package com.forensight.backend.service;
 
 import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Optional;
@@ -13,13 +15,14 @@ import com.forensight.backend.repository.AnalysisResultRepository;
 import com.forensight.backend.repository.EvidenceRepository;
 
 /**
- * Restored ForenSight scoring pipeline documented in the user's 18-Aug-2026
- * forensic report: TruFor is the primary signal (75%) and ELA is supporting
- * evidence (25%). Metadata is retained as context and is not scored.
+ * Original ForenSight 75/25 scoring: TruFor authenticity (75%) + ELA
+ * supporting score (25%). Metadata is context only and is not scored.
+ *
+ * All durable image bytes live in MongoDB GridFS. Container-local files are
+ * short-lived scratch inputs/outputs for metadata, ELA, and TruFor inference.
  */
 @Service
 public class AnalysisService {
-
     private static final double TRUFOR_WEIGHT = 0.75;
     private static final double ELA_WEIGHT = 0.25;
 
@@ -28,97 +31,109 @@ public class AnalysisService {
     private final ElaAnalysisService elaAnalysisService;
     private final MetadataService metadataService;
     private final TruForService truForService;
+    private final EvidenceFileStorageService fileStorage;
 
     public AnalysisService(AnalysisResultRepository analysisResultRepository,
             EvidenceRepository evidenceRepository,
             ElaAnalysisService elaAnalysisService,
             MetadataService metadataService,
-            TruForService truForService) {
+            TruForService truForService,
+            EvidenceFileStorageService fileStorage) {
         this.analysisResultRepository = analysisResultRepository;
         this.evidenceRepository = evidenceRepository;
         this.elaAnalysisService = elaAnalysisService;
         this.metadataService = metadataService;
         this.truForService = truForService;
+        this.fileStorage = fileStorage;
     }
 
     public AnalysisResult analyzeEvidence(String evidenceId) {
         Evidence evidence = evidenceRepository.findById(evidenceId)
                 .orElseThrow(() -> new IllegalArgumentException("Evidence not found."));
 
+        Path originalTemp = null;
+        Path elaTemp = null;
+        Path heatmapTemp = null;
+        Path confidenceTemp = null;
+        Path npzTemp = null;
+
         try {
-            // Metadata is reported as descriptive forensic context only.
-            Map<String, String> metadata = metadataService.extractMetadata(evidence.getFilePath());
+            originalTemp = fileStorage.materialize(evidence.getFilePath(), evidence.getFileName());
+            String originalPath = originalTemp.toString();
+
+            Map<String, String> metadata = metadataService.extractMetadata(originalPath);
             evidence.setMetadata(metadata);
 
-            ElaAnalysisService.ElaResult ela = elaAnalysisService.analyze(evidence.getFilePath());
-            boolean elaSupported = ela != null
-                    && !"UNSUPPORTED".equalsIgnoreCase(ela.getResult())
-                    && !"ERROR".equalsIgnoreCase(ela.getResult());
-
-            String elaImagePath = null;
-            if (elaSupported) {
-                elaImagePath = elaAnalysisService.generateElaImage(evidence.getFilePath(), evidenceId);
-            }
-            evidence.setElaPath(elaImagePath);
-
-            // Clear old paths before running; a failed run must not show stale maps.
+            // Remove old generated artefacts so a failed rerun cannot display stale maps.
+            deleteOldArtifact(evidence.getElaPath());
+            deleteOldArtifact(evidence.getTruforPath());
+            deleteOldArtifact(evidence.getTruforConfidencePath());
+            evidence.setElaPath(null);
             evidence.setTruforPath(null);
             evidence.setTruforConfidencePath(null);
             evidenceRepository.save(evidence);
 
+            ElaAnalysisService.ElaResult ela = elaAnalysisService.analyze(originalPath);
+            boolean elaSupported = ela != null
+                    && !"UNSUPPORTED".equalsIgnoreCase(ela.getResult())
+                    && !"ERROR".equalsIgnoreCase(ela.getResult());
+
+            if (elaSupported) {
+                elaTemp = Paths.get(elaAnalysisService.generateElaImage(originalPath, evidenceId));
+                String elaReference = fileStorage.save(elaTemp,
+                        evidenceId + "_ela.jpg", "image/jpeg");
+                evidence.setElaPath(elaReference);
+                evidenceRepository.save(evidence);
+            }
+
             Optional<TruForService.TruForResult> optional =
-                    truForService.analyzeIfConfigured(evidence.getFilePath(), evidenceId);
+                    truForService.analyzeIfConfigured(originalPath, evidenceId);
             if (optional.isEmpty()) {
                 throw new IOException("TruFor is disabled. No original combined calculation was created.");
             }
             TruForService.TruForResult truFor = optional.get();
 
-            // Persist actual images exported from this run's native TruFor NPZ.
-            evidence.setTruforPath(truFor.getHeatmapPath());
-            evidence.setTruforConfidencePath(truFor.getConfidenceMapPath());
+            heatmapTemp = Paths.get(truFor.getHeatmapPath());
+            confidenceTemp = Paths.get(truFor.getConfidenceMapPath());
+            npzTemp = Paths.get(truFor.getNpzPath());
+
+            String heatmapReference = fileStorage.save(heatmapTemp,
+                    evidenceId + "_trufor_heatmap.png", "image/png");
+            String confidenceReference = fileStorage.save(confidenceTemp,
+                    evidenceId + "_trufor_confidence.png", "image/png");
+
+            evidence.setTruforPath(heatmapReference);
+            evidence.setTruforConfidencePath(confidenceReference);
             evidenceRepository.save(evidence);
 
-            double nativeTruForScore = truFor.getScore(); // 0..1; higher means more manipulation signal
+            double nativeTruForScore = truFor.getScore();
             double truForAuthenticity = (1.0 - nativeTruForScore) * 100.0;
             Double elaScore = elaSupported ? ela.getConfidence() * 100.0 : null;
 
-            // Match the previous report. If ELA cannot run for a format, use
-            // TruFor alone and state that the 75/25 combined method was not used.
+            // Preserve the exact original behavior: for unsupported ELA formats,
+            // TruFor alone is reported and the combined 75/25 formula is not claimed.
             double finalAuthenticityScore;
             String analysisMethod;
             if (elaSupported) {
-                finalAuthenticityScore = (truForAuthenticity * TRUFOR_WEIGHT)
-                        + (elaScore * ELA_WEIGHT);
+                finalAuthenticityScore =
+                        (truForAuthenticity * TRUFOR_WEIGHT) + (elaScore * ELA_WEIGHT);
                 analysisMethod = "TRUFOR_75_ELA_25";
             } else {
                 finalAuthenticityScore = truForAuthenticity;
                 analysisMethod = "TRUFOR_ONLY_ELA_UNAVAILABLE";
             }
 
-            // Keep the same 80/50 risk bands present in the archived backend.
             String riskLevel;
-            if (finalAuthenticityScore >= 80.0) {
-                riskLevel = "LOW";
-            } else if (finalAuthenticityScore >= 50.0) {
-                riskLevel = "MEDIUM";
-            } else {
-                riskLevel = "HIGH";
-            }
+            if (finalAuthenticityScore >= 80.0) riskLevel = "LOW";
+            else if (finalAuthenticityScore >= 50.0) riskLevel = "MEDIUM";
+            else riskLevel = "HIGH";
 
-            // Match the user's historical ForenSight reports: valid combined
-            // authenticity scores below 80 are labelled MANIPULATED; scores
-            // at or above 80 are labelled AUTHENTIC. Risk remains independent
-            // and retains the original 80/50 LOW/MEDIUM/HIGH bands.
-            // This classification boundary is inferred from the two supplied
-            // historical reports (21.57% and 68.04%, both MANIPULATED).
             String finalResult = finalAuthenticityScore < 80.0
-                    ? "MANIPULATED"
-                    : "AUTHENTIC";
+                    ? "MANIPULATED" : "AUTHENTIC";
 
             String elaFinding;
-            if (!elaSupported) {
-                elaFinding = "NOT_SUPPORTED";
-            } else if ("SUSPICIOUS".equalsIgnoreCase(ela.getResult())
+            if (!elaSupported) elaFinding = "NOT_SUPPORTED";
+            else if ("SUSPICIOUS".equalsIgnoreCase(ela.getResult())
                     || "LIKELY_MANIPULATED".equalsIgnoreCase(ela.getResult())) {
                 elaFinding = "POSSIBLE_COMPRESSION_ANOMALY";
             } else {
@@ -127,8 +142,7 @@ public class AnalysisService {
 
             String explanation;
             if (elaSupported) {
-                explanation = String.format(
-                        java.util.Locale.ROOT,
+                explanation = String.format(java.util.Locale.ROOT,
                         "Forensic assessment using TruFor AI as the primary signal with ELA as supporting evidence. "
                         + "TruFor authenticity score: %.2f%%. ELA supporting score: %.2f%%. "
                         + "TruFor contributes 75%% of the final score, while ELA contributes 25%%. "
@@ -138,8 +152,7 @@ public class AnalysisService {
                         truForAuthenticity, elaScore, finalAuthenticityScore, riskLevel,
                         truFor.getConfidence() * 100.0);
             } else {
-                explanation = String.format(
-                        java.util.Locale.ROOT,
+                explanation = String.format(java.util.Locale.ROOT,
                         "Forensic assessment using TruFor AI. ELA is not supported for this image format, "
                         + "so the displayed authenticity score uses TruFor alone; the 75/25 combined formula was not applied. "
                         + "TruFor authenticity score: %.2f%%. Metadata is reported as context only. "
@@ -152,13 +165,12 @@ public class AnalysisService {
             AnalysisResult result = new AnalysisResult();
             result.setEvidenceId(evidenceId);
             result.setResult(finalResult);
-            // The existing report/PDF contract displays confidence as the final authenticity score.
             result.setConfidence(finalAuthenticityScore / 100.0);
             result.setExplanation(explanation);
             result.setAnalyzedAt(LocalDateTime.now());
             result.setElaScore(elaScore);
             result.setElaFinding(elaFinding);
-            result.setMetadataScore(null); // explicitly not a scored component in the original report
+            result.setMetadataScore(null);
             result.setFinalScore(finalAuthenticityScore);
             result.setRiskLevel(riskLevel);
             result.setElaSupported(elaSupported);
@@ -166,10 +178,11 @@ public class AnalysisService {
             result.setTruForAvailable(true);
             result.setTruForAuthenticity(truForAuthenticity);
             result.setTruForConfidence(truFor.getConfidence());
-            result.setTruForStatus("TruFor executed successfully. Native localization heatmap and confidence map are saved.");
-
+            result.setTruForStatus("TruFor executed successfully. Native localization heatmap and confidence map were saved in GridFS.");
             return analysisResultRepository.save(result);
+
         } catch (IOException exception) {
+            evidence.setElaPath(null);
             evidence.setTruforPath(null);
             evidence.setTruforConfidencePath(null);
             evidenceRepository.save(evidence);
@@ -191,7 +204,19 @@ public class AnalysisService {
             failed.setTruForStatus("TruFor did not produce a complete result and heatmap.");
             failed.setAnalyzedAt(LocalDateTime.now());
             return analysisResultRepository.save(failed);
+        } finally {
+            fileStorage.deleteTemporary(originalTemp);
+            fileStorage.deleteTemporary(elaTemp);
+            fileStorage.deleteTemporary(heatmapTemp);
+            fileStorage.deleteTemporary(confidenceTemp);
+            fileStorage.deleteTemporary(npzTemp);
         }
+    }
+
+    private void deleteOldArtifact(String reference) {
+        if (reference == null || reference.isBlank()) return;
+        try { fileStorage.delete(reference); }
+        catch (IOException ignored) { /* A missing old artifact must not block a new run. */ }
     }
 
     public Optional<AnalysisResult> getAnalysis(String evidenceId) {

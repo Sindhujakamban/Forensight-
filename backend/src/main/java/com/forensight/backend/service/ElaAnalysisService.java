@@ -519,37 +519,9 @@ public class ElaAnalysisService {
             }
 
 
-            // -------------------------------------------------
-            // Create output folder
-            // -------------------------------------------------
-
-            File folder =
-                    new File(
-                            "uploads/ela"
-                    );
-
-
-            if (!folder.exists()) {
-
-                if (!folder.mkdirs()
-                        && !folder.exists()) {
-
-                    throw new IOException(
-                            "Unable to create ELA directory"
-                    );
-                }
-            }
-
-
-            // -------------------------------------------------
-            // Output file
-            // -------------------------------------------------
-
-            File elaFile =
-                    new File(
-                            folder,
-                            evidenceId + "_ela.jpg"
-                    );
+            // Store the generated ELA image in a short-lived temp file.
+            // The caller persists the bytes to MongoDB GridFS before returning.
+            File elaFile = File.createTempFile("forensight_ela_" + evidenceId + "_", ".jpg");
 
 
             // -------------------------------------------------
