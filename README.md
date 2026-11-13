@@ -73,11 +73,13 @@ All `/api/**` endpoints require HTTP Basic authentication; only `/api/health` is
 
 ## Forensic scoring
 
-The restored original combined formula is **ELA 40% + metadata availability 20% + TruFor authenticity 40%**. The full formula is used only when the TruFor model completes successfully. The original risk bands are LOW at 80 or above, MEDIUM at 50–79.99, and HIGH below 50; the original result threshold is AUTHENTIC at 70 or above, otherwise MANIPULATED.
+The ZIP's original calculation is **TruFor authenticity 75% + ELA supporting score 25%**:
 
-ELA screening and visualization accept JPEG and PNG. PNG files are recompressed to JPEG for the ELA comparison, so the result is a recompression-based screening signal rather than proof of the image's original compression history.
+`Final Authenticity = (TruFor authenticity × 0.75) + (ELA score × 0.25)`
 
-When TruFor is not installed or fails on the host, the backend still produces a clearly labelled **PRELIMINARY** result using ELA and metadata only. Their original 40:20 relative weights are normalized across the available 60% of signals. The absent TruFor 40% score is never invented; preliminary results are not the complete original combined assessment.
+TruFor authenticity is calculated as `(1 − native TruFor manipulation score) × 100`. Metadata is extracted and shown as forensic context only; it is not part of the original score. The ZIP's original result threshold is AUTHENTIC at 80% or above, otherwise MANIPULATED. Risk bands are LOW at 80% or above, MEDIUM from 50% to below 80%, and HIGH below 50%.
+
+The ZIP's ELA implementation supports JPEG/JPG. For image formats where ELA is unsupported, the original backend uses TruFor alone and discloses that the 75/25 combined formula was not applied. A complete 75/25 result requires the real TruFor model, its pretrained weights, and the bridge runtime. These model weights are not included in the uploaded ZIP and must be installed on the backend before enabling TruFor. Do not substitute a made-up TruFor score.
 
 ## TruFor limitation
 

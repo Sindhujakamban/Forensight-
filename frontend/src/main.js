@@ -102,7 +102,7 @@ root.innerHTML = `
               <div>
                 <span class="muted-label">ANALYSIS WORKFLOW</span>
                 <strong>TruFor AI + ELA</strong>
-                <small>Original scoring: ELA 40% · Metadata 20% · TruFor 40%</small>
+                <small>TruFor primary signal · 75% | ELA supporting signal · 25%</small>
               </div>
             </div>
           </div>
@@ -732,32 +732,30 @@ function renderAnalysis() {
   const analysis = state.analysis || {};
   const hasAnalysis = Boolean(analysis.result && analysis.result !== 'NOT ANALYZED');
   const modelAvailable = analysis.truForAvailable === true;
-  const preliminaryAvailable = analysis.analysisMethod === 'LEGACY_40_20_40_PRELIMINARY_NORMALIZED';
-  const scoredResultAvailable = modelAvailable || preliminaryAvailable;
-  const result = !hasAnalysis ? 'NOT ANALYZED' : (scoredResultAvailable ? normalizeResult(analysis.result) : 'INCONCLUSIVE');
-  const displayResult = preliminaryAvailable ? `PRELIMINARY ${result}` : result;
-  const risk = scoredResultAvailable ? String(analysis.riskLevel || 'UNKNOWN').toUpperCase() : 'UNKNOWN';
-  const riskLabel = preliminaryAvailable ? `${risk} · PRELIMINARY` : risk;
+  // Legacy database rows may say LIKELY_AUTHENTIC based on ELA only. Never
+  // show that as an authenticity verdict unless a model actually ran.
+  const result = !hasAnalysis ? 'NOT ANALYZED' : (modelAvailable ? normalizeResult(analysis.result) : 'INCONCLUSIVE');
+  const risk = modelAvailable ? String(analysis.riskLevel || 'UNKNOWN').toUpperCase() : 'UNKNOWN';
   const cls = resultClass(result);
-  const modelScore = scoredResultAvailable ? formatScore(analysis.finalScore) : 'N/A';
+  const modelScore = modelAvailable ? formatScore(analysis.finalScore) : 'N/A';
   const truforAuthenticity = modelAvailable ? formatScore(analysis.truForAuthenticity) : 'N/A';
   const elaFinding = elaFindingLabel(analysis.elaFinding);
 
   view.innerHTML = `
     <div class="analysis-header">
       <div><span class="section-kicker">SELECTED EVIDENCE</span><h3>${escapeHtml(evidence.fileName || 'Unnamed evidence')}</h3><p class="mono">${escapeHtml(evidence.id || '')}</p></div>
-      <div class="analysis-header-actions"><span class="risk-badge ${risk.toLowerCase()}">${escapeHtml(riskLabel)}</span><button class="primary-button" id="reanalyzeButton">${analysis.result && analysis.result !== 'NOT ANALYZED' ? 'Re-run Analysis' : 'Run Analysis'}</button><button class="secondary-button" id="reportButton">Download PDF</button><button class="danger-button small" id="deleteEvidenceTop">Delete Evidence</button></div>
+      <div class="analysis-header-actions"><span class="risk-badge ${risk.toLowerCase()}">${escapeHtml(risk)}</span><button class="primary-button" id="reanalyzeButton">${analysis.result && analysis.result !== 'NOT ANALYZED' ? 'Re-run Analysis' : 'Run Analysis'}</button><button class="secondary-button" id="reportButton">Download PDF</button><button class="danger-button small" id="deleteEvidenceTop">Delete Evidence</button></div>
     </div>
 
     <div class="result-hero ${cls}">
-      <div><span class="muted-label">${modelAvailable ? 'MODEL-ASSISTED FORENSIC ASSESSMENT' : preliminaryAvailable ? 'PRELIMINARY SCREENING · TRUFOR 40% UNAVAILABLE' : 'PRELIMINARY FORENSIC SCREENING'}</span><strong>${escapeHtml(displayResult)}</strong><p>${escapeHtml(analysis.explanation || 'No explanation available yet.')}</p></div>
-      <div class="hero-score"><span>${modelAvailable ? 'Original authenticity score · ELA 40% + Metadata 20% + TruFor 40%' : preliminaryAvailable ? 'Preliminary score · available ELA and metadata signals normalized' : 'Authenticity score'}</span><strong>${modelScore}</strong></div>
+      <div><span class="muted-label">${modelAvailable ? 'MODEL-ASSISTED FORENSIC ASSESSMENT' : 'PRELIMINARY FORENSIC SCREENING'}</span><strong>${escapeHtml(result)}</strong><p>${escapeHtml(analysis.explanation || 'No explanation available yet.')}</p></div>
+      <div class="hero-score"><span>Final Authenticity · TruFor 75% + ELA 25%</span><strong>${modelScore}</strong></div>
     </div>
 
     <div class="metric-grid">
-      <div class="metric-card"><span>TruFor Authenticity · 40%</span><strong>${truforAuthenticity}</strong><small>${modelAvailable ? 'Primary AI signal · (1 − native TruFor score) × 100' : 'Unavailable; its 40% contribution is not invented or included'}</small></div>
-      <div class="metric-card"><span>ELA Score · 40%</span><strong>${formatScore(analysis.elaScore)}</strong><small>${escapeHtml(elaFinding)} · original ELA signal</small></div>
-      <div class="metric-card"><span>Metadata Score · 20%</span><strong>${formatScore(analysis.metadataScore)}</strong><small>Original availability heuristic: 100 when readable metadata exists; 60 when missing or unreadable</small></div>
+      <div class="metric-card"><span>TruFor Authenticity · 75%</span><strong>${truforAuthenticity}</strong><small>Primary AI signal · (1 − native TruFor score) × 100</small></div>
+      <div class="metric-card"><span>ELA Supporting Score · 25%</span><strong>${formatScore(analysis.elaScore)}</strong><small>${escapeHtml(elaFinding)} · supporting signal</small></div>
+      <div class="metric-card"><span>Metadata Context</span><strong>Not scored</strong><small>Reported separately; excluded from final authenticity score</small></div>
       <div class="metric-card"><span>TruFor confidence</span><strong>${formatPercent(analysis.truForConfidence)}</strong><small>${escapeHtml(analysis.truForStatus || 'TruFor not available')}</small></div>
     </div>
 
@@ -780,7 +778,7 @@ function renderAnalysis() {
     <div class="tab-panel" data-tab-panel="metadata"><div id="metadataPanel" class="metadata-grid-large"><div class="loading-card small"><div class="spinner"></div><span>Loading metadata…</span></div></div></div>
 
     <div class="tab-panel" data-tab-panel="ela">
-      ${analysis.elaSupported ? `<div class="visual-card"><div class="visual-copy"><span class="section-kicker">ERROR LEVEL ANALYSIS</span><h3>ELA supporting visualization</h3><p>ELA compares the source image with a JPEG-recompressed copy. For PNG files, this is a recompression screening signal, not proof of the original compression history. A clean ELA result does not prove authenticity.</p></div><img data-api-asset="/api/evidence/ela/${encodeURIComponent(evidence.id)}?t=${Date.now()}" alt="ELA visualization" onerror="this.classList.add('image-error')"></div>` : `<div class="empty-state small"><h4>ELA is not available for this image</h4><p>The current ELA implementation supports JPEG files. Metadata extraction and the optional TruFor integration can still be reviewed.</p></div>`}
+      ${analysis.elaSupported ? `<div class="visual-card"><div class="visual-copy"><span class="section-kicker">ERROR LEVEL ANALYSIS</span><h3>ELA supporting visualization</h3><p>ELA highlights JPEG recompression differences only. A clean ELA result does not mean the image is authentic, and an anomaly does not prove editing.</p></div><img data-api-asset="/api/evidence/ela/${encodeURIComponent(evidence.id)}?t=${Date.now()}" alt="ELA visualization" onerror="this.classList.add('image-error')"></div>` : `<div class="empty-state small"><h4>ELA is not available for this image</h4><p>The current ELA implementation supports JPEG files. Metadata extraction and the optional TruFor integration can still be reviewed.</p></div>`}
     </div>
 
     <div class="tab-panel" data-tab-panel="trufor">
@@ -822,7 +820,7 @@ function renderAnalysis() {
       ` : `<div class="empty-state small"><h4>TruFor heatmap not available</h4><p>TruFor has not produced saved visualization files for this evidence. Re-run analysis and check the backend log if the images are still unavailable.</p></div>`}
     </div>
 
-    <div class="tab-panel" data-tab-panel="report"><div class="report-callout"><div><span class="section-kicker">FORMAL REPORT</span><h3>Generate a complete forensic PDF</h3><p>The PDF includes the original ELA 40% + metadata 20% + TruFor 40% formula when TruFor is available. If the model is offline, the report clearly labels a preliminary ELA/metadata-only score and discloses that the TruFor 40% component is missing.</p></div><button class="primary-button" id="reportButtonSecondary">Generate PDF</button></div></div>
+    <div class="tab-panel" data-tab-panel="report"><div class="report-callout"><div><span class="section-kicker">FORMAL REPORT</span><h3>Generate a complete forensic PDF</h3><p>The PDF includes evidence details, metadata as context, the original image, ELA supporting visualization, the TruFor localization heatmap, confidence map, and the original 75% TruFor + 25% ELA calculation.</p></div><button class="primary-button" id="reportButtonSecondary">Generate PDF</button></div></div>
   `;
 
   bindAnalysisTabs();

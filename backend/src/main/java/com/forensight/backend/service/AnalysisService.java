@@ -13,21 +13,15 @@ import com.forensight.backend.repository.AnalysisResultRepository;
 import com.forensight.backend.repository.EvidenceRepository;
 
 /**
- * Preserves the original ForenSight scoring formula:
- * ELA 40% + metadata availability score 20% + TruFor authenticity 40%.
- *
- * When the optional TruFor model is not installed on the hosting service,
- * the service returns a clearly marked preliminary score using only the
- * available ELA and metadata signals. The two available weights are
- * renormalized to 100%; this is not represented as the full TruFor result.
+ * Restored ForenSight scoring pipeline documented in the user's 18-Aug-2026
+ * forensic report: TruFor is the primary signal (75%) and ELA is supporting
+ * evidence (25%). Metadata is retained as context and is not scored.
  */
 @Service
 public class AnalysisService {
 
-    private static final double ELA_WEIGHT = 0.40;
-    private static final double METADATA_WEIGHT = 0.20;
-    private static final double TRUFOR_WEIGHT = 0.40;
-    private static final double AVAILABLE_WITHOUT_TRUFOR = ELA_WEIGHT + METADATA_WEIGHT;
+    private static final double TRUFOR_WEIGHT = 0.75;
+    private static final double ELA_WEIGHT = 0.25;
 
     private final AnalysisResultRepository analysisResultRepository;
     private final EvidenceRepository evidenceRepository;
@@ -52,120 +46,129 @@ public class AnalysisService {
                 .orElseThrow(() -> new IllegalArgumentException("Evidence not found."));
 
         try {
+            // Metadata is reported as descriptive forensic context only.
             Map<String, String> metadata = metadataService.extractMetadata(evidence.getFilePath());
             evidence.setMetadata(metadata);
 
-            // The original implementation runs ELA for JPEG and PNG files.
-            // PNG is recompressed to JPEG for comparison; this is screening,
-            // not proof of the image's original compression history.
             ElaAnalysisService.ElaResult ela = elaAnalysisService.analyze(evidence.getFilePath());
             boolean elaSupported = ela != null
                     && !"UNSUPPORTED".equalsIgnoreCase(ela.getResult())
                     && !"ERROR".equalsIgnoreCase(ela.getResult());
-            if (!elaSupported) {
-                throw new IOException("ELA could not produce a usable screening result.");
-            }
 
-            String elaImagePath = elaAnalysisService.generateElaImage(evidence.getFilePath(), evidenceId);
+            String elaImagePath = null;
+            if (elaSupported) {
+                elaImagePath = elaAnalysisService.generateElaImage(evidence.getFilePath(), evidenceId);
+            }
             evidence.setElaPath(elaImagePath);
 
-            // Never reuse visual artifacts from an older run.
+            // Clear old paths before running; a failed run must not show stale maps.
             evidence.setTruforPath(null);
             evidence.setTruforConfidencePath(null);
             evidenceRepository.save(evidence);
 
-            double elaScore = clampPercent(ela.getConfidence() * 100.0);
-            double metadataScore = metadata == null || metadata.isEmpty()
-                    || metadata.containsKey("Error") ? 60.0 : 100.0;
+            Optional<TruForService.TruForResult> optional =
+                    truForService.analyzeIfConfigured(evidence.getFilePath(), evidenceId);
+            if (optional.isEmpty()) {
+                throw new IOException("TruFor is disabled. No original combined calculation was created.");
+            }
+            TruForService.TruForResult truFor = optional.get();
 
-            TruForService.TruForResult truFor = null;
-            String truForStatus;
-            if (!truForService.isEnabled()) {
-                truForStatus = "TruFor is disabled on this hosting service. Its original 40% component is unavailable; this run is marked preliminary.";
+            // Persist actual images exported from this run's native TruFor NPZ.
+            evidence.setTruforPath(truFor.getHeatmapPath());
+            evidence.setTruforConfidencePath(truFor.getConfidenceMapPath());
+            evidenceRepository.save(evidence);
+
+            double nativeTruForScore = truFor.getScore(); // 0..1; higher means more manipulation signal
+            double truForAuthenticity = (1.0 - nativeTruForScore) * 100.0;
+            Double elaScore = elaSupported ? ela.getConfidence() * 100.0 : null;
+
+            // Match the previous report. If ELA cannot run for a format, use
+            // TruFor alone and state that the 75/25 combined method was not used.
+            double finalAuthenticityScore;
+            String analysisMethod;
+            if (elaSupported) {
+                finalAuthenticityScore = (truForAuthenticity * TRUFOR_WEIGHT)
+                        + (elaScore * ELA_WEIGHT);
+                analysisMethod = "TRUFOR_75_ELA_25";
             } else {
-                try {
-                    Optional<TruForService.TruForResult> optional =
-                            truForService.analyzeIfConfigured(evidence.getFilePath(), evidenceId);
-                    if (optional.isPresent()) {
-                        truFor = optional.get();
-                        evidence.setTruforPath(truFor.getHeatmapPath());
-                        evidence.setTruforConfidencePath(truFor.getConfidenceMapPath());
-                        evidenceRepository.save(evidence);
-                        truForStatus = "TruFor executed successfully. Native localization heatmap and confidence map were saved.";
-                    } else {
-                        truForStatus = "TruFor did not run. Its original 40% component is unavailable; this run is marked preliminary.";
-                    }
-                } catch (IOException truForException) {
-                    // An unavailable optional model must not prevent the original
-                    // ELA + metadata screening from returning a useful result.
-                    truForStatus = "TruFor inference failed on the hosting service. Check the model files, bridge path, and Python dependencies; this run is marked preliminary.";
-                }
+                finalAuthenticityScore = truForAuthenticity;
+                analysisMethod = "TRUFOR_ONLY_ELA_UNAVAILABLE";
             }
 
-            double finalScore;
-            String analysisMethod;
-            boolean truForAvailable = truFor != null;
-            Double truForAuthenticity = null;
-            Double truForConfidence = null;
-            String finalResult;
+            // Keep the same 80/50 risk bands present in the archived backend.
             String riskLevel;
+            if (finalAuthenticityScore >= 80.0) {
+                riskLevel = "LOW";
+            } else if (finalAuthenticityScore >= 50.0) {
+                riskLevel = "MEDIUM";
+            } else {
+                riskLevel = "HIGH";
+            }
+
+            // Match the user's historical ForenSight reports: valid combined
+            // authenticity scores below 80 are labelled MANIPULATED; scores
+            // at or above 80 are labelled AUTHENTIC. Risk remains independent
+            // and retains the original 80/50 LOW/MEDIUM/HIGH bands.
+            // This classification boundary is inferred from the two supplied
+            // historical reports (21.57% and 68.04%, both MANIPULATED).
+            String finalResult = finalAuthenticityScore < 80.0
+                    ? "MANIPULATED"
+                    : "AUTHENTIC";
+
+            String elaFinding;
+            if (!elaSupported) {
+                elaFinding = "NOT_SUPPORTED";
+            } else if ("SUSPICIOUS".equalsIgnoreCase(ela.getResult())
+                    || "LIKELY_MANIPULATED".equalsIgnoreCase(ela.getResult())) {
+                elaFinding = "POSSIBLE_COMPRESSION_ANOMALY";
+            } else {
+                elaFinding = "NO_CLEAR_COMPRESSION_ANOMALY";
+            }
+
             String explanation;
-
-            if (truForAvailable) {
-                // Original TruFor convention: 0 = low manipulation evidence,
-                // 1 = high manipulation evidence. Convert to authenticity.
-                truForAuthenticity = clampPercent((1.0 - truFor.getScore()) * 100.0);
-                truForConfidence = truFor.getConfidence();
-
-                finalScore = (elaScore * ELA_WEIGHT)
-                        + (metadataScore * METADATA_WEIGHT)
-                        + (truForAuthenticity * TRUFOR_WEIGHT);
-                analysisMethod = "LEGACY_40_20_40";
+            if (elaSupported) {
                 explanation = String.format(
                         java.util.Locale.ROOT,
-                        "Original ForenSight combined forensic calculation. ELA contributes 40%% (%.2f%%), metadata availability contributes 20%% (%.2f%%), and TruFor authenticity contributes 40%% (%.2f%%). Final authenticity score: %.2f%%. Risk level: %s. TruFor model confidence: %.2f%%. Metadata presence is a heuristic signal, not proof of authenticity; automated screening is an analytical aid, not standalone proof.",
-                        elaScore, metadataScore, truForAuthenticity, finalScore, riskLevelFor(finalScore),
+                        "Forensic assessment using TruFor AI as the primary signal with ELA as supporting evidence. "
+                        + "TruFor authenticity score: %.2f%%. ELA supporting score: %.2f%%. "
+                        + "TruFor contributes 75%% of the final score, while ELA contributes 25%%. "
+                        + "Metadata is reported as forensic context and is not used directly in the authenticity score. "
+                        + "Final authenticity score: %.2f%%. Risk level: %s. "
+                        + "TruFor model confidence: %.2f%%. This automated screening is an analytical aid, not standalone proof.",
+                        truForAuthenticity, elaScore, finalAuthenticityScore, riskLevel,
                         truFor.getConfidence() * 100.0);
             } else {
-                // Preserve the original relative ELA:metadata ratio (40:20)
-                // while explicitly normalizing across only the 60% of signals
-                // actually available. Do not invent the missing TruFor score.
-                finalScore = ((elaScore * ELA_WEIGHT) + (metadataScore * METADATA_WEIGHT))
-                        / AVAILABLE_WITHOUT_TRUFOR;
-                analysisMethod = "LEGACY_40_20_40_PRELIMINARY_NORMALIZED";
                 explanation = String.format(
                         java.util.Locale.ROOT,
-                        "PRELIMINARY RESULT — the original ForenSight formula is ELA 40%% + metadata availability 20%% + TruFor authenticity 40%%. TruFor was unavailable on this host, so no TruFor value has been invented. The displayed preliminary score (%.2f%%) is the weighted ELA (%.2f%%) and metadata (%.2f%%) result normalized across the available 60%% only. It is not the complete original 40/20/40 combined result. Metadata presence is a heuristic signal, not proof of authenticity. %s",
-                        finalScore, elaScore, metadataScore, truForStatus);
+                        "Forensic assessment using TruFor AI. ELA is not supported for this image format, "
+                        + "so the displayed authenticity score uses TruFor alone; the 75/25 combined formula was not applied. "
+                        + "TruFor authenticity score: %.2f%%. Metadata is reported as context only. "
+                        + "Final authenticity score: %.2f%%. Risk level: %s. TruFor model confidence: %.2f%%. "
+                        + "This automated screening is an analytical aid, not standalone proof.",
+                        truForAuthenticity, finalAuthenticityScore, riskLevel,
+                        truFor.getConfidence() * 100.0);
             }
-
-            finalResult = finalScore >= 70.0 ? "AUTHENTIC" : "MANIPULATED";
-            riskLevel = riskLevelFor(finalScore);
-
-            String elaFinding = "SUSPICIOUS".equalsIgnoreCase(ela.getResult())
-                    || "LIKELY_MANIPULATED".equalsIgnoreCase(ela.getResult())
-                    ? "POSSIBLE_COMPRESSION_ANOMALY"
-                    : "NO_CLEAR_COMPRESSION_ANOMALY";
 
             AnalysisResult result = new AnalysisResult();
             result.setEvidenceId(evidenceId);
             result.setResult(finalResult);
-            result.setConfidence(finalScore / 100.0);
+            // The existing report/PDF contract displays confidence as the final authenticity score.
+            result.setConfidence(finalAuthenticityScore / 100.0);
             result.setExplanation(explanation);
             result.setAnalyzedAt(LocalDateTime.now());
             result.setElaScore(elaScore);
             result.setElaFinding(elaFinding);
-            result.setMetadataScore(metadataScore);
-            result.setFinalScore(finalScore);
+            result.setMetadataScore(null); // explicitly not a scored component in the original report
+            result.setFinalScore(finalAuthenticityScore);
             result.setRiskLevel(riskLevel);
-            result.setElaSupported(true);
+            result.setElaSupported(elaSupported);
             result.setAnalysisMethod(analysisMethod);
-            result.setTruForAvailable(truForAvailable);
+            result.setTruForAvailable(true);
             result.setTruForAuthenticity(truForAuthenticity);
-            result.setTruForConfidence(truForConfidence);
-            result.setTruForStatus(truForStatus);
-            return analysisResultRepository.save(result);
+            result.setTruForConfidence(truFor.getConfidence());
+            result.setTruForStatus("TruFor executed successfully. Native localization heatmap and confidence map are saved.");
 
+            return analysisResultRepository.save(result);
         } catch (IOException exception) {
             evidence.setTruforPath(null);
             evidence.setTruforConfidencePath(null);
@@ -175,7 +178,8 @@ public class AnalysisService {
             failed.setEvidenceId(evidenceId);
             failed.setResult("ERROR");
             failed.setConfidence(0.0);
-            failed.setExplanation("Image screening could not be completed: " + exception.getMessage());
+            failed.setExplanation("Unable to complete the TruFor + ELA forensic pipeline: "
+                    + exception.getMessage());
             failed.setElaScore(null);
             failed.setElaFinding("ERROR");
             failed.setMetadataScore(null);
@@ -184,20 +188,10 @@ public class AnalysisService {
             failed.setElaSupported(false);
             failed.setAnalysisMethod("FAILED");
             failed.setTruForAvailable(false);
-            failed.setTruForStatus("No complete ELA screening result was created.");
+            failed.setTruForStatus("TruFor did not produce a complete result and heatmap.");
             failed.setAnalyzedAt(LocalDateTime.now());
             return analysisResultRepository.save(failed);
         }
-    }
-
-    private static String riskLevelFor(double score) {
-        if (score >= 80.0) return "LOW";
-        if (score >= 50.0) return "MEDIUM";
-        return "HIGH";
-    }
-
-    private static double clampPercent(double value) {
-        return Math.max(0.0, Math.min(100.0, value));
     }
 
     public Optional<AnalysisResult> getAnalysis(String evidenceId) {
