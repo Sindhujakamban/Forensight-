@@ -56,7 +56,11 @@ GitHub Pages serves only static frontend files; it does not host the Spring Boot
 
 ## Deploy the backend
 
-The included `render.yaml` is a Render Blueprint for the backend. Create it from the public GitHub repository at Render; the service URL is `https://forensight-api-o5qp.onrender.com`. Create the Blueprint from the repository, then set these variables in the Render dashboard before the service can become healthy. The GitHub Pages build currently targets `https://forensight-api-o5qp.onrender.com`; change the repository Actions variable `VITE_API_BASE_URL` if Render assigns a different URL:
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Sindhujakamban/Forensight-)
+
+The included `render.yaml` is a Render Blueprint for the backend. Open the Deploy to Render button, sign in to Render, connect GitHub if asked, review the service, and apply the Blueprint. The expected service URL is `https://forensight-api-o5qp.onrender.com`; if Render assigns a different URL, set that URL as the GitHub Actions variable `VITE_API_BASE_URL`.
+
+Create a fresh free MongoDB Atlas cluster at [MongoDB Atlas](https://www.mongodb.com/atlas/database), create a database user, configure the Atlas IP access list for the Render service, and copy its new connection string. During the Render Blueprint setup, enter that value for `MONGODB_URI` and set a new strong `APP_PASSWORD`. Never reuse the credential embedded in the original ZIP. Do not paste either secret into GitHub source or chat.
 
 - `MONGODB_URI` — a newly rotated MongoDB Atlas connection string (secret)
 - `APP_PASSWORD` — a unique, strong password for the investigator account (secret)
