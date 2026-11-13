@@ -18,12 +18,27 @@ public class HealthController {
         this.mongoTemplate = mongoTemplate;
     }
 
+    /**
+     * Readiness check used by Render and public uptime checks.
+     * Return UP only when the API can reach MongoDB; a running JVM alone
+     * is not enough for ForenSight to accept investigation requests.
+     */
     @GetMapping("/api/health")
     public ResponseEntity<Map<String, String>> health() {
-        return ResponseEntity.ok(Map.of(
-                "status", "UP",
-                "service", "ForenSight AI Backend"
-        ));
+        try {
+            mongoTemplate.getDb().runCommand(new Document("ping", 1));
+            return ResponseEntity.ok(Map.of(
+                    "status", "UP",
+                    "service", "ForenSight AI Backend",
+                    "database", "UP"
+            ));
+        } catch (Exception exception) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                    "status", "DOWN",
+                    "service", "ForenSight AI Backend",
+                    "database", "UNAVAILABLE"
+            ));
+        }
     }
 
     @GetMapping("/api/auth/check")
@@ -37,10 +52,9 @@ public class HealthController {
             mongoTemplate.getDb().runCommand(new Document("ping", 1));
             return ResponseEntity.ok(Map.of(
                     "status", "UP",
-                    "database", "MongoDB Atlas"
+                    "database", "MongoDB"
             ));
         } catch (Exception exception) {
-            // Return a non-2xx status so the frontend can correctly mark DB as unavailable.
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
                     "status", "DOWN",
                     "database", "MongoDB connection unavailable"
@@ -48,4 +62,3 @@ public class HealthController {
         }
     }
 }
-
