@@ -38,3 +38,7 @@ project-package/
 **/*.pth
 **/*.pth.tar
 **/TruFor_weights.zip
+
+# Local TruFor checkout, pretrained weights, and venv (never commit model files)
+.trufor/
+.trufor-venv/

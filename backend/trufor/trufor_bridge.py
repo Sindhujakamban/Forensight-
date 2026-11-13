@@ -42,10 +42,16 @@ def main():
     output_dir = OUTPUT_ROOT / safe_id / uuid.uuid4().hex
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    gpu_setting = os.environ.get("TRUFOR_GPU", "-1")
+    try:
+        gpu_id = int(gpu_setting)
+    except ValueError:
+        fail(f"TRUFOR_GPU must be -1 or a non-negative GPU index; received: {gpu_setting}")
+
     command = [
         PYTHON,
         str(TEST_SCRIPT),
-        "-gpu", "-1",
+        "-gpu", str(gpu_id),
         "-in", str(image_path),
         "-out", str(output_dir),
         "TEST.MODEL_FILE", str(MODEL),

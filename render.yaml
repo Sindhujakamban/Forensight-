@@ -2,15 +2,11 @@ services:
   - type: web
     name: forensight-api
     runtime: docker
-    plan: standard
+    plan: free
     region: singapore
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/health
-    disk:
-      name: forensight-uploads
-      mountPath: /app/uploads
-      sizeGB: 5
     envVars:
       - key: MONGODB_URI
         sync: false
@@ -21,12 +17,4 @@ services:
       - key: APP_PASSWORD
         sync: false
       - key: TRUFOR_ENABLED
-        value: "true"
-      - key: TRUFOR_ROOT
-        value: /opt/trufor
-      - key: TRUFOR_PYTHON
-        value: python
-      - key: TRUFOR_BRIDGE
-        value: /app/backend/trufor/trufor_bridge.py
-      - key: TRUFOR_OUTPUT_DIR
-        value: /app/uploads/trufor
+        value: "false"
