@@ -266,11 +266,22 @@ public class PdfService {
                     report.getTruForConfidence() == null ? "Not available"
                             : String.format("%.2f%%", report.getTruForConfidence() * 100.0),
                     labelFont, normalFont);
-            addInformationRow(summaryTable, "Scoring Formula",
-                    report.isElaSupported() ? "TruFor 75% + ELA 25%" : "TruFor only (ELA unavailable)",
-                    labelFont, normalFont);
-            addInformationRow(summaryTable, "Metadata",
-                    "Context only; not included in the authenticity score", labelFont, normalFont);
+            String scoringFormula;
+            if ("LEGACY_40_20_40".equals(report.getAnalysisMethod())) {
+                scoringFormula = "Original formula: ELA 40% + Metadata 20% + TruFor 40%";
+            } else if ("LEGACY_40_20_40_PRELIMINARY_NORMALIZED".equals(report.getAnalysisMethod())) {
+                scoringFormula = "PRELIMINARY: ELA 40% + Metadata 20%, normalized over available 60%; TruFor 40% unavailable";
+            } else if ("TRUFOR_75_ELA_25".equals(report.getAnalysisMethod())) {
+                scoringFormula = "TruFor 75% + ELA 25% (legacy saved assessment)";
+            } else {
+                scoringFormula = report.getAnalysisMethod() == null ? "Not specified" : report.getAnalysisMethod();
+            }
+            addInformationRow(summaryTable, "Scoring Formula", scoringFormula, labelFont, normalFont);
+            String metadataDescription = report.getMetadataScore() == null
+                    ? "Not calculated"
+                    : String.format("Metadata availability score: %.2f%% (heuristic signal; metadata presence is not proof of authenticity)",
+                            report.getMetadataScore());
+            addInformationRow(summaryTable, "Metadata Score", metadataDescription, labelFont, normalFont);
             addInformationRow(summaryTable, "TruFor Status", report.getTruForStatus(), labelFont, normalFont);
             document.add(summaryTable);
 
@@ -330,9 +341,11 @@ public class PdfService {
             );
 
 
+            boolean preliminary = "LEGACY_40_20_40_PRELIMINARY_NORMALIZED".equals(report.getAnalysisMethod());
             String confidenceText = report.getFinalScore() == null
-                    ? "Final authenticity score: not available."
-                    : String.format("Final authenticity score: %.2f%%", report.getFinalScore());
+                    ? "Authenticity score: not available."
+                    : String.format(preliminary ? "PRELIMINARY authenticity score (available signals only): %.2f%%"
+                            : "Final authenticity score: %.2f%%", report.getFinalScore());
 
             Paragraph confidenceParagraph =
                     new Paragraph(
