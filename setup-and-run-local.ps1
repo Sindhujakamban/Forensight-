@@ -172,8 +172,11 @@ try {
 
     Write-Host "Starting local Spring Boot backend and TruFor..."
     $BackendDir = Join-Path $RepoRoot "backend"
-    Start-Process -FilePath "powershell.exe" -WorkingDirectory $BackendDir -ArgumentList @(
-        "-NoExit", "-ExecutionPolicy", "Bypass", "-Command", "& .\mvnw.cmd spring-boot:run"
+    $BackendDirLiteral = $BackendDir.Replace("'", "''")
+    $BackendCommand = "& { Set-Location -LiteralPath '$BackendDirLiteral'; & .\mvnw.cmd spring-boot:run }"
+    $BackendEncoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($BackendCommand))
+    Start-Process -FilePath "powershell.exe" -ArgumentList @(
+        "-NoExit", "-EncodedCommand", $BackendEncoded
     ) | Out-Null
 
     Write-Host "Waiting for the local API and MongoDB connection..."
@@ -190,9 +193,12 @@ try {
     }
 
     $FrontendDir = Join-Path $RepoRoot "frontend"
+    $FrontendDirLiteral = $FrontendDir.Replace("'", "''")
     $env:VITE_API_BASE_URL = "http://localhost:8080"
-    Start-Process -FilePath "powershell.exe" -WorkingDirectory $FrontendDir -ArgumentList @(
-        "-NoExit", "-ExecutionPolicy", "Bypass", "-Command", "npm.cmd run dev -- --host 127.0.0.1"
+    $FrontendCommand = "& { Set-Location -LiteralPath '$FrontendDirLiteral'; npm.cmd run dev -- --host 127.0.0.1 }"
+    $FrontendEncoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($FrontendCommand))
+    Start-Process -FilePath "powershell.exe" -ArgumentList @(
+        "-NoExit", "-EncodedCommand", $FrontendEncoded
     ) | Out-Null
 
     Start-Sleep -Seconds 3
