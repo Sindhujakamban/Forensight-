@@ -61,6 +61,8 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: maven
+      - name: Validate TruFor bridge syntax
+        run: python3 -m py_compile backend/trufor/trufor_bridge.py
       - name: Test and package Spring Boot backend
         working-directory: backend
         env:

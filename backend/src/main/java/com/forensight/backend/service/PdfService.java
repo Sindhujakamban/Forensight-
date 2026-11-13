@@ -272,6 +272,11 @@ public class PdfService {
             addInformationRow(summaryTable, "Metadata",
                     "Context only; not included in the authenticity score", labelFont, normalFont);
             addInformationRow(summaryTable, "TruFor Status", report.getTruForStatus(), labelFont, normalFont);
+            if (report.isTruForAvailable()) {
+                addInformationRow(summaryTable, "TruFor Attribution",
+                        "GRIP-UNINA, University of Naples Federico II, CVPR 2023. Informational and nonprofit use only.",
+                        labelFont, normalFont);
+            }
             document.add(summaryTable);
 
             document.add(new Paragraph("\n"));

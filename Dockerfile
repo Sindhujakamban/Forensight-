@@ -33,7 +33,7 @@ COPY --from=java-runtime /opt/java/openjdk /opt/java/openjdk
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       ca-certificates curl git unzip libgomp1 libglib2.0-0 libgl1 libsm6 libxext6 libxrender1 \
+       ca-certificates curl git unzip libgomp1 libglib2.0-0 libgl1 libsm6 libxext6 libxrender1 libfontconfig1 libfreetype6 libx11-6 libxi6 libxtst6 libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Pin the CPU PyTorch version used by the upstream TruFor inference container.
@@ -67,7 +67,9 @@ RUN git clone --depth 1 https://github.com/grip-unina/TruFor.git /tmp/TruFor \
 # Verify the upstream-published MD5 before extracting the model.
 RUN set -eux; \
     WEIGHTS_ZIP=/tmp/TruFor_weights.zip; \
-    if ! curl --fail --location --retry 3 --retry-delay 3 "$TRUFOR_WEIGHTS_URL" --output "$WEIGHTS_ZIP"; then \
+    if ! curl --fail --location --retry 3 --retry-delay 3 "$TRUFOR_WEIGHTS_URL" --output "$WEIGHTS_ZIP"; then rm -f "$WEIGHTS_ZIP"; fi; \
+    if [ ! -s "$WEIGHTS_ZIP" ] || [ "$(md5sum "$WEIGHTS_ZIP" | cut -d ' ' -f 1)" != "$TRUFOR_WEIGHTS_MD5" ]; then \
+      rm -f "$WEIGHTS_ZIP"; \
       python -m pip install --no-cache-dir gdown==5.2.0; \
       python -m gdown --fuzzy "https://drive.google.com/file/d/$TRUFOR_WEIGHTS_DRIVE_ID/view?usp=sharing" --output "$WEIGHTS_ZIP"; \
     fi; \
